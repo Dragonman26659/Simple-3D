@@ -2,7 +2,7 @@
 workspace "Simple 3D"
     configurations { "Debug", "Release"}
 
-project "Simple 3D"
+project "Simple-3D"
     location "/src/Simple-3D"
     kind "StaticLib"
     language "C++"
@@ -12,15 +12,14 @@ project "Simple 3D"
     objdir ("bin-int/Simple-3D/%{cfg.buildcfg}")
 
     files {
-        "src/%{prj.name}/**.h",
-        "src/%{prj.name}/**.hpp", 
-        "src/%{prj.name}/**.c", 
+        "src/%{prj.name}/**.c",
         "src/%{prj.name}/**.cpp",
         "include/**.h",
-        "nclude/**.hpp"
+        "include/**.hpp"
     }
 
     includedirs {
+        "include",
         "vendor/GLFW/include",
         "vendor/SDL/include",
         "vendor/Vulkan/Include"
@@ -56,7 +55,7 @@ project "Simple 3D"
         cppdialect "C++17"
         systemversion "latest"
 
-project "GLFW Example"
+project "GLFW-Example"
     location "/src/GLFW-Example"
     kind "WindowedApp"
     language "C++"
@@ -96,7 +95,7 @@ project "GLFW Example"
         cppdialect "C++17"
         systemversion "latest"
 
-project "SDL Example"
+project "SDL-Example"
     location "/src/SDL-Example"
     kind "WindowedApp"
     language "C++"
