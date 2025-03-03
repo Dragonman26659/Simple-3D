@@ -3,23 +3,24 @@ workspace "Simple 3D"
     configurations { "Debug", "Release"}
 
 project "Simple-3D"
-    location "/src/Simple-3D"
+    location '%{prj.name}'
     kind "StaticLib"
     language "C++"
 
 
-    targetdir ("bin/Simple-3D/%{cfg.buildcfg}")
-    objdir ("bin-int/Simple-3D/%{cfg.buildcfg}")
+    targetdir ("bin/%{prj.name}/%{cfg.buildcfg}")
+    objdir ("bin-int/%{prj.name}/%{cfg.buildcfg}")
+
 
     files {
-        "src/%{prj.name}/**.c",
-        "src/%{prj.name}/**.cpp",
-        "include/**.h",
-        "include/**.hpp"
+        "%{prj.name}/**.c",
+        "%{prj.name}/**.cpp",
+        "%{prj.name}/**.h",
+        "%{prj.name}/**.hpp"
     }
 
     includedirs {
-        "include",
+        "Simple-3D/include",
         "vendor/GLFW/include",
         "vendor/SDL/include",
         "vendor/Vulkan/Include"
@@ -38,11 +39,7 @@ project "Simple-3D"
         "SDL2-staticd",
         "vulkan-1.lib"
     }
-
-
-
-
-
+    
     filter "configurations:Debug"
         defines {"DEBUG"}
         symbols "On"
@@ -56,21 +53,24 @@ project "Simple-3D"
         systemversion "latest"
 
 project "GLFW-Example"
-    location "/src/GLFW-Example"
+    location '%{prj.name}'
     kind "WindowedApp"
     language "C++"
-    targetdir "bin/Examples/GLFW/%{cfg.buildcfg}"
-    objdir ("bin-int/Examples/GLFW/%{cfg.buildcfg}")
+
+
+    targetdir ("bin/%{prj.name}/%{cfg.buildcfg}")
+    objdir ("bin-int/%{prj.name}/%{cfg.buildcfg}")
+
 
     files {
-        "src/%{prj.name}/**.h",
-        "src/%{prj.name}/**.hpp", 
-        "src/%{prj.name}/**.c", 
-        "src/%{prj.name}/**.cpp"
+        "%{prj.name}/**.c",
+        "%{prj.name}/**.cpp",
+        "%{prj.name}/**.h",
+        "%{prj.name}/**.hpp"
     }
 
     includedirs {
-        "include",
+        "Simple-3D/include",
         "vendor/GLFW/include"
     }
 
@@ -96,22 +96,24 @@ project "GLFW-Example"
         systemversion "latest"
 
 project "SDL-Example"
-    location "/src/SDL-Example"
+    location '%{prj.name}'
     kind "WindowedApp"
     language "C++"
-
-    targetdir "bin/Examples/SDL2/%{cfg.buildcfg}"
-    objdir ("bin-int/Examples/SDL2/%{cfg.buildcfg}")
-
+    
+    
+    targetdir ("bin/%{prj.name}/%{cfg.buildcfg}")
+    objdir ("bin-int/%{prj.name}/%{cfg.buildcfg}")
+    
+    
     files {
-        "src/%{prj.name}/**.h",
-        "src/%{prj.name}/**.hpp", 
-        "src/%{prj.name}/**.c", 
-        "src/%{prj.name}/**.cpp"
+        "%{prj.name}/**.c",
+        "%{prj.name}/**.cpp",
+        "%{prj.name}/**.h",
+        "%{prj.name}/**.hpp"
     }
 
     includedirs {
-        "include",
+        "Simple-3D/include",
         "vendor/SDL/include"
     }
 
