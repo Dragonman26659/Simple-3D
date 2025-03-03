@@ -54,7 +54,7 @@ project "Simple-3D"
 
 project "GLFW-Example"
     location '%{prj.name}'
-    kind "WindowedApp"
+    kind "ConsoleApp"
     language "C++"
 
 
@@ -76,11 +76,13 @@ project "GLFW-Example"
 
 
     libdirs { 
-        "vendor/GLFW/lib-vc2022" 
+        "vendor/GLFW/lib-vc2022" ,
+        "bin/Simple-3D/%{cfg.buildcfg}"
     }
 
     links {
-        "glfw3"
+        "glfw3",
+        "Simple-3D"
     }
 
     filter "configurations:Debug"
@@ -97,7 +99,7 @@ project "GLFW-Example"
 
 project "SDL-Example"
     location '%{prj.name}'
-    kind "WindowedApp"
+    kind "ConsoleApp"
     language "C++"
     
     
@@ -118,11 +120,13 @@ project "SDL-Example"
     }
 
     libdirs { 
-        "vendor/SDL/bin"
+        "vendor/SDL/bin",
+        "bin/Simple-3D/%{cfg.buildcfg}"
     }
 
     links {
-        "SDL2-staticd"
+        "SDL2-staticd",
+        "Simple-3D"
     }
 
     filter "configurations:Debug"
