@@ -31,7 +31,7 @@ project "Simple-3D"
     libdirs { 
         "vendor/SDL/bin", 
         "vendor/GLFW/lib-vc2022",
-        "vendor/Vulkan/Lib",
+        "vendor/Vulkan/Lib"
     }
 
     links {
@@ -51,6 +51,7 @@ project "Simple-3D"
     filter "system:windows"
         cppdialect "C++17"
         systemversion "latest"
+        architecture "x64"
 
 project "GLFW-Example"
     location '%{prj.name}'
@@ -71,7 +72,8 @@ project "GLFW-Example"
 
     includedirs {
         "Simple-3D/include",
-        "vendor/GLFW/include"
+        "vendor/GLFW/include",
+        "vendor/Vulkan/Include"
     }
 
 
@@ -96,6 +98,7 @@ project "GLFW-Example"
     filter "system:windows"
         cppdialect "C++17"
         systemversion "latest"
+        architecture "x64"
 
 project "SDL-Example"
     location '%{prj.name}'
@@ -116,7 +119,8 @@ project "SDL-Example"
 
     includedirs {
         "Simple-3D/include",
-        "vendor/SDL/include"
+        "vendor/SDL/include",
+        "vendor/Vulkan/Include"
     }
 
     libdirs { 
@@ -140,3 +144,4 @@ project "SDL-Example"
     filter "system:windows"
         cppdialect "C++17"
         systemversion "latest"
+        architecture "x64"
