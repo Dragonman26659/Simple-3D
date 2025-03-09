@@ -1,4 +1,3 @@
-#include <GLFW/glfw3.h>
 #include "Simple3D.h"
 #include <stdio.h>
 
@@ -18,6 +17,10 @@ int main() {
 
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 2);
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
+	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);  // This is crucial for Vulkan
+	glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
+
+
 	GLFWwindow* window = glfwCreateWindow(640, 480, "My Title", NULL, NULL);
 
 	if (!window) {
@@ -38,9 +41,6 @@ int main() {
 
 		// Submit models to be rendered Ect
 		renderer->Render();
-
-		// Swap Buffers
-		glfwSwapBuffers(window);
 	}
 
 

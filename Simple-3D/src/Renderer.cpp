@@ -1,11 +1,5 @@
 #include "Renderer.h"
 
-#ifdef DEBUG
-const bool enableValidationLayers = false;
-#else
-const bool enableValidationLayers = true;
-#endif
-
 // Helper function for error messages
 std::string vkResultToString(VkResult result) {
 	switch (result) {
@@ -23,44 +17,42 @@ namespace Simple3D {
 
 	// Initalisation
 	Renderer::~Renderer() {
+		delete RenderDevice;
+		vkDestroySurfaceKHR(instance, surface, nullptr);
 		vkDestroyInstance(instance, nullptr);
-		setupDebugMessenger();
 	}
 
 	void Renderer::CreateInstance(std::string EngineName, std::string ApplicationName) {
-		// Validation layers -- Checking for supprot
+		// Store strings locally to ensure lifetime
+		std::string engineStr = EngineName;
+		std::string appName = ApplicationName;
+
+		// Validation layers -- Checking for support
 		if (enableValidationLayers && !checkValidationLayerSupport()) {
 			printf("validation layers requested, but not available!");
 			throw std::runtime_error("validation layers requested, but not available!");
 		}
 
-
-		// App inforamtion
-		VkApplicationInfo appInfo{}; 
-		appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO; 
-		appInfo.pApplicationName = ApplicationName.c_str(); 
-		appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0); 
-		appInfo.pEngineName = EngineName.c_str();; 
-		appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0); 
-		appInfo.apiVersion = VK_API_VERSION_1_0; 
-
-
-
-		// At minimum have the window extensions
-		//uint32_t extensionCount = WindowExtensionCount;
+		// App information
+		VkApplicationInfo appInfo{};
+		appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
+		appInfo.pApplicationName = appName.c_str();
+		appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
+		appInfo.pEngineName = engineStr.c_str();
+		appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
+		appInfo.apiVersion = VK_API_VERSION_1_0;
 
 		// Create the instance
-
 		VkInstanceCreateInfo createInfo{};
 		createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
 		createInfo.pApplicationInfo = &appInfo;
-		createInfo.enabledLayerCount = 0;
 
-		auto extensions = getRequiredExtensions(); 
+		// Handle extensions
+		auto extensions = getRequiredExtensions();
 		createInfo.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
-		createInfo.ppEnabledExtensionNames = extensions.data(); 
+		createInfo.ppEnabledExtensionNames = extensions.data();
 
-		// Create validation layers
+		// Handle validation layers
 		if (enableValidationLayers) {
 			createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
 			createInfo.ppEnabledLayerNames = validationLayers.data();
@@ -69,12 +61,12 @@ namespace Simple3D {
 			createInfo.enabledLayerCount = 0;
 		}
 
-		// Create instance with error handling
+		// Create instance with comprehensive error handling
 		VkResult result = vkCreateInstance(&createInfo, nullptr, &instance);
 		if (result != VK_SUCCESS) {
-			printf("Error: Failed to create Vulkan instance (error code: %s)\n", (vkResultToString(result).c_str()));
-			throw std::runtime_error("failed to create instance: " +
-				std::string(vkResultToString(result)));
+			std::string errorString = vkResultToString(result);
+			printf("Error: Failed to create Vulkan instance (error code: %s)\n", errorString.c_str());
+			throw std::runtime_error("failed to create instance: " + errorString);
 		}
 	}
 

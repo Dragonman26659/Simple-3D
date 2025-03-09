@@ -1,23 +1,10 @@
 #pragma once
-#include "Device.h"
-#include "vulkan/vulkan.h"
+#include "SimpleCore.h"
 
 
-
-
-// Standard
-#include <string>
-#include <vector>
-#include <stdexcept>
-#include <iostream>
-
-// Changes depending on if 
-#ifdef SDL_WINDOW
-#include "SDL.h"
-#else
-#include "GLFW/glfw3.h"
-#endif
-
+// Simple 3D
+#include "Internal/Device.h"
+#include "Internal/SwapChain.h"
 
 
 
@@ -25,14 +12,6 @@ namespace Simple3D {
 	const std::vector<const char*> validationLayers = {
 		"VK_LAYER_KHRONOS_validation"
 	};
-
-
-
-
-
-
-
-
 
 	/*
 	* Handles rendering
@@ -60,8 +39,24 @@ namespace Simple3D {
 			CreateInstance(EngineName, ApplicationName);
 			//setupDebugMessenger(); -- Validation Layers not supported :(
 
+			// Create VkSurfaceKHR
+			if (glfwCreateWindowSurface(instance, window, nullptr, &surface) != VK_SUCCESS) { 
+				printf("failed to create window surface!");
+				throw std::runtime_error("failed to create window surface!"); 
+			}
 
-			printf("Finished Creating Instance");
+			// Create device
+			RenderDevice = new Device(instance, surface);
+
+			// Create Swapchain
+			int width, height;
+			glfwGetFramebufferSize(window, &width, &height);
+
+			swapChain = new SwapChain(*RenderDevice, surface, width, height);
+
+
+
+			printf("Renderer Generated");
 		}
 #endif
 
@@ -77,13 +72,17 @@ namespace Simple3D {
 		VkInstance instance;
 		VkDebugUtilsMessengerEXT debugMessenger;
 
+		// Classes
+		Device* RenderDevice;
+		SwapChain* swapChain;
+		VkSurfaceKHR surface;
+
 		// Information gathered from windows
 		const char** WindowExtensions;
 		uint32_t WindowExtensionCount = 0;
 
 		void CreateInstance(std::string EngineName, std::string ApplicationName);
 		//void setupDebugMessenger();
-
 
 
 
