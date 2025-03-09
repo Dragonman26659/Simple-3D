@@ -72,6 +72,9 @@ namespace Simple3D {
 		vkGetSwapchainImagesKHR(s_Device.getLogicalDevice(), swapChain, &imageCount, nullptr);
 		swapChainImages.resize(imageCount); 
 		vkGetSwapchainImagesKHR(s_Device.getLogicalDevice(), swapChain, &imageCount, swapChainImages.data());
+
+		swapChainImageFormat = surfaceFormat.format;
+		swapChainExtent = extent;
 	}
 
 
@@ -154,5 +157,9 @@ namespace Simple3D {
 
 	const std::vector<VkImageView>& SwapChain::getImageViews() const {
 		return swapChainImageViews;
+	}
+
+	VkFormat SwapChain::GetSwapChainImageFormat() {
+		return swapChainImageFormat;
 	}
 }

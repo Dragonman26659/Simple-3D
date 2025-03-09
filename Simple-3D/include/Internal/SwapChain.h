@@ -17,6 +17,7 @@ namespace Simple3D {
 
 		// Accessors
 		const std::vector<VkImageView>& getImageViews() const;
+		VkFormat GetSwapChainImageFormat();
 
 	private:
 		Device& s_Device;

@@ -3,7 +3,7 @@
 
 
 
-#ifdef DEBUG
+#ifndef DEBUG
 const bool enableValidationLayers = false;
 #else
 const bool enableValidationLayers = true;
@@ -35,3 +35,7 @@ const bool enableValidationLayers = true;
 #include <cstdint>
 #include <limits>
 #include <algorithm>
+#include <fstream>
+
+// Helper function for error messages
+std::string vkResultToString(VkResult result);

@@ -5,7 +5,7 @@
 // Simple 3D
 #include "Internal/Device.h"
 #include "Internal/SwapChain.h"
-
+#include "Internal/Pipeline.h"
 
 
 namespace Simple3D {
@@ -25,38 +25,62 @@ namespace Simple3D {
 #ifdef SDL_WINDOW
 		Renderer(SDL_Window* window, std::string EngineName, std::string ApplicationName) {
 			// Get Information from window
+			SDL_SysWMinfo wmi;
+			SDL_VERSION(&wmi.version);
+			SDL_GetWindowWMInfo(window, &wmi);
+			WindowExtensions = SDL_Vulkan_GetInstanceExtensions(&WindowExtensionCount);
 
-			// Create instance
+			// Get window dimensions
+			int width, height;
+			SDL_GetWindowSize(window, &width, &height);
+
+			// Create Instance
 			CreateInstance(EngineName, ApplicationName);
-		}
+
+			// Create Window Surface
+			VkResult result = vkCreateWin32SurfaceKHR(instance, &wmi.info.win, nullptr, &surface);
+			if (result != VK_SUCCESS) {
+				printf("failed to create window surface!");
+				throw std::runtime_error("failed to create window surface!");
+			}
+
+			// Create device & swapchain
+			RenderDevice = new Device(instance, surface);
+			swapChain = new SwapChain(*RenderDevice, surface, width, height);
+
+			// Create render pass
+			CreateRenderPass();
+
+			// Create pipelines
+			pipeline = new Pipeline(*RenderDevice);
+	}
 		
 #else
 		Renderer(GLFWwindow* window, std::string EngineName, std::string ApplicationName) {
 			// Get Information from window
+			int width, height;
+
 			WindowExtensions = glfwGetRequiredInstanceExtensions(&WindowExtensionCount);
+			glfwGetFramebufferSize(window, &width, &height);
 
-			// Create instance
+			// Create Instance
 			CreateInstance(EngineName, ApplicationName);
-			//setupDebugMessenger(); -- Validation Layers not supported :(
 
-			// Create VkSurfaceKHR
+			// Create Window Surface
 			if (glfwCreateWindowSurface(instance, window, nullptr, &surface) != VK_SUCCESS) { 
 				printf("failed to create window surface!");
 				throw std::runtime_error("failed to create window surface!"); 
 			}
 
-			// Create device
+			// Create device & swapchain
 			RenderDevice = new Device(instance, surface);
-
-			// Create Swapchain
-			int width, height;
-			glfwGetFramebufferSize(window, &width, &height);
-
 			swapChain = new SwapChain(*RenderDevice, surface, width, height);
 
+			// Create render pass
+			CreateRenderPass();
 
-
-			printf("Renderer Generated");
+			// Create pipelines
+			pipeline = new Pipeline(*RenderDevice, renderPass);
 		}
 #endif
 
@@ -69,25 +93,31 @@ namespace Simple3D {
 
 
 	private:
+		// Vulkan sepcific data
 		VkInstance instance;
 		VkDebugUtilsMessengerEXT debugMessenger;
+		VkSurfaceKHR surface;
+		VkRenderPass renderPass;
 
 		// Classes
 		Device* RenderDevice;
 		SwapChain* swapChain;
-		VkSurfaceKHR surface;
+		Pipeline* pipeline;
 
 		// Information gathered from windows
 		const char** WindowExtensions;
 		uint32_t WindowExtensionCount = 0;
 
 		void CreateInstance(std::string EngineName, std::string ApplicationName);
-		//void setupDebugMessenger();
 
+		// Debug info
+		bool useValidationLayers = enableValidationLayers;
+		void setupDebugMessenger();
+		void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT debugMessenger, const VkAllocationCallbacks* pAllocator);
 
-
-
+		// Initalise Vulkan
 		std::vector<const char*> getRequiredExtensions();
 		bool checkValidationLayerSupport();
+		void CreateRenderPass();
 	};
 }
