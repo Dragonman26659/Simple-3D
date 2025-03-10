@@ -159,4 +159,10 @@ namespace Simple3D {
 
         return shaderModule;
     }
+
+
+
+    VkPipeline Pipeline::GetPipeline() {
+        return graphicsPipeline;
+    }
 }

@@ -81,6 +81,8 @@ namespace Simple3D {
 	void SwapChain::recreate(int n_width, int n_height) {
 		width = n_width;
 		height = n_height;
+
+
 	}
 
 
@@ -161,5 +163,9 @@ namespace Simple3D {
 
 	VkFormat SwapChain::GetSwapChainImageFormat() {
 		return swapChainImageFormat;
+	}
+
+	VkExtent2D SwapChain::GetSwapChainExtent() {
+		return swapChainExtent;
 	}
 }

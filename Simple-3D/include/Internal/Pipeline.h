@@ -17,10 +17,13 @@ namespace Simple3D {
 		Pipeline(Device& s_Device, VkRenderPass& renderPass);
 		~Pipeline();
 
+
+		VkPipeline GetPipeline();
+
 	private:
 		Device& s_Device;
-		const std::string& fragment = "shaders/vert.spv";
-		const std::string& vertex = "shaders/frag.spv";
+		const std::string& fragment = "shaders/frag.spv";
+		const std::string& vertex = "shaders/vert.spv";
 
 		static std::vector<char> readFile(const std::string& filename);
 

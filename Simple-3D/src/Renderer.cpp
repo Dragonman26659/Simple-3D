@@ -13,9 +13,84 @@ std::string vkResultToString(VkResult result) {
 	}
 }
 
+
 namespace Simple3D {
 
-	// Debug Messenger
+	// Actual render loop :0
+	void Renderer::Render() {
+
+	}
+
+
+
+
+	// Command buffer recording
+	void Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex) {
+		VkClearValue clearColor = { {{0.0f, 0.0f, 0.0f, 1.0f}} }; // Make this controlled by a variable eventually
+
+		// Begin to record
+		VkCommandBufferBeginInfo beginInfo{}; 
+		beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO; 
+		beginInfo.flags = 0; // Optional 
+		beginInfo.pInheritanceInfo = nullptr; // Optional 
+
+		if (vkBeginCommandBuffer(commandBuffer, &beginInfo) != VK_SUCCESS) { 
+			printf("failed to begin recording command buffer!");
+			throw std::runtime_error("failed to begin recording command buffer!"); 
+		}
+
+
+		// Get render pass and its information
+		VkRenderPassBeginInfo renderPassInfo{};
+		renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+		renderPassInfo.renderPass = renderPass;
+		renderPassInfo.framebuffer = swapChainFramebuffers[imageIndex];
+		renderPassInfo.renderArea.offset = { 0, 0 };
+		renderPassInfo.renderArea.extent = swapChain->GetSwapChainExtent();
+		renderPassInfo.clearValueCount = 1; 
+		renderPassInfo.pClearValues = &clearColor; 
+
+
+		vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->GetPipeline());
+
+
+
+		// Define viewport + sizzor
+		VkViewport viewport{};
+		viewport.x = 0.0f;
+		viewport.y = 0.0f;
+		viewport.width = static_cast<float>(swapChain->GetSwapChainExtent().width);
+		viewport.height = static_cast<float>(swapChain->GetSwapChainExtent().height);
+		viewport.minDepth = 0.0f;
+		viewport.maxDepth = 1.0f;
+		vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+
+		VkRect2D scissor{};
+		scissor.offset = { 0, 0 };
+		scissor.extent = swapChain->GetSwapChainExtent();
+		vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+
+
+		vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+		vkCmdEndRenderPass(commandBuffer); 
+
+		if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) { 
+			printf("failed to record command buffer!");
+			throw std::runtime_error("failed to record command buffer!");
+		}
+	}
+
+	
+
+
+	//////////////////////////////////////////
+	//				VULKAN SHITE			//
+	//////////////////////////////////////////
+
+
+
+		// Debug Messenger
 	VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDebugUtilsMessengerEXT* pDebugMessenger) {
 		auto func = (PFN_vkCreateDebugUtilsMessengerEXT)vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT");
 		if (func != nullptr) {
@@ -40,13 +115,17 @@ namespace Simple3D {
 
 
 
-
-
-
-	// Initalisation
+	// Destructor
 	Renderer::~Renderer() {
 		if (useValidationLayers) {
 			DestroyDebugUtilsMessengerEXT(instance, debugMessenger, nullptr);
+		}
+
+		vkDestroyCommandPool(RenderDevice->getLogicalDevice(), commandPool, nullptr);
+
+		// Delte framebuffers
+		for (auto framebuffer : swapChainFramebuffers) {
+			vkDestroyFramebuffer(RenderDevice->getLogicalDevice(), framebuffer, nullptr);
 		}
 
 		// In order to keep memory saftey must be in this order
@@ -200,11 +279,55 @@ namespace Simple3D {
 		}
 	}
 
-	void Renderer::Render() {
+	void Renderer::createFramebuffers() {
+		swapChainFramebuffers.resize(swapChain->getImageViews().size());
 
+		for (size_t i = 0; i < swapChain->getImageViews().size(); i++) {
+			VkImageView attachments[] = {
+				swapChain->getImageViews()[i]
+			};
+
+			VkFramebufferCreateInfo framebufferInfo{};
+			framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+			framebufferInfo.renderPass = renderPass;
+			framebufferInfo.attachmentCount = 1;
+			framebufferInfo.pAttachments = attachments;
+			framebufferInfo.width = swapChain->GetSwapChainExtent().width;
+			framebufferInfo.height = swapChain->GetSwapChainExtent().height;
+			framebufferInfo.layers = 1;
+
+			if (vkCreateFramebuffer(RenderDevice->getLogicalDevice(), &framebufferInfo, nullptr, &swapChainFramebuffers[i]) != VK_SUCCESS) {
+				throw std::runtime_error("failed to create framebuffer!");
+			}
+		}
 	}
 
 
 
+	void Renderer::createCommandPool() {
+		QueueFamilyIndices queueFamilyIndices = RenderDevice->findQueueFamilies();
 
+		VkCommandPoolCreateInfo poolInfo{};
+		poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+		poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+		poolInfo.queueFamilyIndex = queueFamilyIndices.graphicsFamily.value();
+
+
+		if (vkCreateCommandPool(RenderDevice->getLogicalDevice(), &poolInfo, nullptr, &commandPool) != VK_SUCCESS) {
+			throw std::runtime_error("failed to create command pool!");
+		}
+	}
+
+
+	void Renderer::createCommandBuffer() {
+		VkCommandBufferAllocateInfo allocInfo{};
+		allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+		allocInfo.commandPool = commandPool;
+		allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+		allocInfo.commandBufferCount = 1;
+
+		if (vkAllocateCommandBuffers(RenderDevice->getLogicalDevice(), &allocInfo, &commandBuffer) != VK_SUCCESS) {
+			throw std::runtime_error("failed to allocate command buffers!");
+		}
+	}
 }

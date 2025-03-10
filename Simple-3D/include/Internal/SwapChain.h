@@ -18,6 +18,7 @@ namespace Simple3D {
 		// Accessors
 		const std::vector<VkImageView>& getImageViews() const;
 		VkFormat GetSwapChainImageFormat();
+		VkExtent2D GetSwapChainExtent();
 
 	private:
 		Device& s_Device;
@@ -26,11 +27,14 @@ namespace Simple3D {
 		int width;
 		int height;
 
+
+		// Swap Chain Variables
 		VkSwapchainKHR swapChain;
 		std::vector<VkImage> swapChainImages;
 		std::vector<VkImageView> swapChainImageViews; 
 		VkFormat swapChainImageFormat;
 		VkExtent2D swapChainExtent;
+
 
 
 		VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats);

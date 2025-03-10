@@ -93,13 +93,30 @@ namespace Simple3D {
 
 
 	private:
-		// Vulkan sepcific data
+		// Vulkan Instance
 		VkInstance instance;
+
+		// Debug messenger (for validation layers)
 		VkDebugUtilsMessengerEXT debugMessenger;
+
+		// Vulkan surface
 		VkSurfaceKHR surface;
+
+		// Command pool + buffer
+		VkCommandPool commandPool;
+		VkCommandBuffer commandBuffer;
+
+
+		// Parts that are not large enough for there own class but probably should be
+
+		// Render pass
 		VkRenderPass renderPass;
 
-		// Classes
+		// Framebuffer
+		std::vector<VkFramebuffer> swapChainFramebuffers;
+
+
+		// Device, swapchain and pipeline (ik useful comment)
 		Device* RenderDevice;
 		SwapChain* swapChain;
 		Pipeline* pipeline;
@@ -108,7 +125,17 @@ namespace Simple3D {
 		const char** WindowExtensions;
 		uint32_t WindowExtensionCount = 0;
 
+
+
+
+		// Create instance
 		void CreateInstance(std::string EngineName, std::string ApplicationName);
+
+
+		// Create command pool and command buffer
+		void createCommandPool();
+		void createCommandBuffer();
+		void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex);
 
 		// Debug info
 		bool useValidationLayers = enableValidationLayers;
@@ -118,6 +145,10 @@ namespace Simple3D {
 		// Initalise Vulkan
 		std::vector<const char*> getRequiredExtensions();
 		bool checkValidationLayerSupport();
+
+
+		// Parts that are not large enough for there own class but probably should be
 		void CreateRenderPass();
+		void createFramebuffers();
 	};
 }
