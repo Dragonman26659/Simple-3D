@@ -40,10 +40,17 @@ int main() {
 
 
 		// Submit models to be rendered Ect
+
+
+
+		// Render
 		renderer->Render();
 	}
 
+	renderer->WaitToFinish();
 
+
+	delete renderer;
 	glfwDestroyWindow(window);
 
 	return 0;

@@ -24,6 +24,7 @@ project "Simple-3D"
         "vendor/GLFW/include",
         "vendor/SDL/include",
         "vendor/Vulkan/Include"
+        "vendor/glm"
     }
 
 

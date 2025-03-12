@@ -33,6 +33,8 @@ namespace Simple3D {
 		SwapChainSupportDetails querySwapChainSupport();
 		QueueFamilyIndices findQueueFamilies();
 		VkDevice getLogicalDevice();
+		VkQueue getVKgraphicsQueue();
+		VkQueue getVKpresentQueue();
 
 	private:
 		VkInstance& instance;
@@ -43,6 +45,7 @@ namespace Simple3D {
 		VkDevice device;
 
 		VkQueue graphicsQueue;
+		VkQueue presentQueue;
 
 
 		// Physical Device

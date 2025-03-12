@@ -13,17 +13,16 @@ namespace Simple3D {
 		"VK_LAYER_KHRONOS_validation"
 	};
 
-	/*
-	* Handles rendering
-	* 
-	* 
-	* 
-	*/
+
+	const int MAX_FRAMES_IN_FLIGHT = 2;
+
+
 	class Renderer {
 	public:
 // Changes based on if you use SDL or GLFW for windowing
 #ifdef SDL_WINDOW
-		Renderer(SDL_Window* window, std::string EngineName, std::string ApplicationName) {
+		Renderer(SDL_Window* window, std::string EngineName, std::string ApplicationName) 
+			: window(window) {
 			// Get Information from window
 			SDL_SysWMinfo wmi;
 			SDL_VERSION(&wmi.version);
@@ -52,11 +51,35 @@ namespace Simple3D {
 			CreateRenderPass();
 
 			// Create pipelines
-			pipeline = new Pipeline(*RenderDevice);
-	}
+			pipeline = new Pipeline(*RenderDevice, renderPass);
+
+			// Create frame buffers
+			createFramebuffers();
+
+
+			// Create Command Buffers
+			createCommandPool();
+			createCommandBuffer();
+
+			// Create sync objects
+			createSyncObjects();
+		}
+
+
+		int GetWindowWidth() {
+			return 1;
+		}
+
+		int GetWindowHeight() {
+			return 1;
+		}
 		
+		SDL_Window* window;
+
 #else
-		Renderer(GLFWwindow* window, std::string EngineName, std::string ApplicationName) {
+		// GLFW specific Constructor
+		Renderer(GLFWwindow* window, std::string EngineName, std::string ApplicationName) 
+			: window(window) {
 			// Get Information from window
 			int width, height;
 
@@ -81,7 +104,35 @@ namespace Simple3D {
 
 			// Create pipelines
 			pipeline = new Pipeline(*RenderDevice, renderPass);
+
+			// Create frame buffers
+			createFramebuffers();
+
+
+			// Create Command Buffers
+			createCommandPool();
+			createCommandBuffer();
+
+			// Create sync objects
+			createSyncObjects();
 		}
+
+
+		int GetWindowWidth() {
+			int width;
+			glfwGetFramebufferSize(window, &width, nullptr);
+			return width;
+		}
+
+		int GetWindowHeight() {
+			int height;
+			glfwGetFramebufferSize(window, nullptr, &height);
+			return height;
+		}
+
+
+		// GLFW window
+		GLFWwindow* window;
 #endif
 
 
@@ -90,6 +141,8 @@ namespace Simple3D {
 
 
 		void Render();
+		void WaitToFinish();
+		void RecreateSwapChain();
 
 
 	private:
@@ -104,7 +157,13 @@ namespace Simple3D {
 
 		// Command pool + buffer
 		VkCommandPool commandPool;
-		VkCommandBuffer commandBuffer;
+		std::vector<VkCommandBuffer> commandBuffers;
+
+
+		// Vulkan sync objects
+		std::vector<VkSemaphore> imageAvailableSemaphores;
+		std::vector<VkSemaphore> renderFinishedSemaphores;
+		std::vector<VkFence> inFlightFences;
 
 
 		// Parts that are not large enough for there own class but probably should be
@@ -125,8 +184,11 @@ namespace Simple3D {
 		const char** WindowExtensions;
 		uint32_t WindowExtensionCount = 0;
 
+		// Store the current frame we are on
+		uint32_t currentFrame = 0;
 
-
+		// Has it resized
+		//bool framebufferResized = false;
 
 		// Create instance
 		void CreateInstance(std::string EngineName, std::string ApplicationName);
@@ -136,6 +198,10 @@ namespace Simple3D {
 		void createCommandPool();
 		void createCommandBuffer();
 		void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex);
+
+
+		// Sync objects
+		void createSyncObjects();
 
 		// Debug info
 		bool useValidationLayers = enableValidationLayers;
@@ -150,5 +216,8 @@ namespace Simple3D {
 		// Parts that are not large enough for there own class but probably should be
 		void CreateRenderPass();
 		void createFramebuffers();
+
+		// Clean up all objects related to swapchain
+		void cleanupSwapChain();
 	};
 }

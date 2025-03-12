@@ -5,12 +5,12 @@ namespace Simple3D {
 	SwapChain::SwapChain(Device& s_Device, VkSurfaceKHR& surface, int width, int height) 
 		: s_Device(s_Device), surface(surface), width(width), height(height) {
 		create();
+		createImageViews();
 	}
 
 
 	SwapChain::~SwapChain() {
 		cleanup();
-		createImageViews();
 	}
 
 	// Swap chain operations
@@ -61,12 +61,16 @@ namespace Simple3D {
 
 		createInfo.oldSwapchain = VK_NULL_HANDLE;
 
-		VkSwapchainKHR swapChain;
 
-
-		if (vkCreateSwapchainKHR(s_Device.getLogicalDevice(), &createInfo, nullptr, &swapChain) != VK_SUCCESS) {
-			printf("failed to create swap chain!");
+		VkResult result = vkCreateSwapchainKHR(s_Device.getLogicalDevice(), &createInfo, nullptr, &swapChain);
+		if (result != VK_SUCCESS) {
+			printf("failed to create swap chain! error %s", vkResultToString(result));
 			throw std::runtime_error("failed to create swap chain!");
+		}
+
+		if (swapChain == VK_NULL_HANDLE) {
+			printf("swapchain not created!");
+			throw std::runtime_error("swapchain not created!");
 		}
 
 		vkGetSwapchainImagesKHR(s_Device.getLogicalDevice(), swapChain, &imageCount, nullptr);
@@ -82,11 +86,16 @@ namespace Simple3D {
 		width = n_width;
 		height = n_height;
 
-
+		create();
+		createImageViews();
 	}
 
 
 	void SwapChain::cleanup() {
+		for (size_t i = 0; i < swapChainImageViews.size(); i++) {
+			vkDestroyImageView(s_Device.getLogicalDevice(), swapChainImageViews[i], nullptr);
+		}
+
 		vkDestroySwapchainKHR(s_Device.getLogicalDevice(), swapChain, nullptr);
 	}
 
@@ -161,11 +170,15 @@ namespace Simple3D {
 		return swapChainImageViews;
 	}
 
-	VkFormat SwapChain::GetSwapChainImageFormat() {
+	VkFormat& SwapChain::GetSwapChainImageFormat() {
 		return swapChainImageFormat;
 	}
 
-	VkExtent2D SwapChain::GetSwapChainExtent() {
+	VkExtent2D& SwapChain::GetSwapChainExtent() {
 		return swapChainExtent;
+	}
+
+	VkSwapchainKHR& SwapChain::GetVKSwapchain() {
+		return swapChain;
 	}
 }
