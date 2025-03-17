@@ -83,8 +83,6 @@ namespace Simple3D {
 			throw std::runtime_error("failed to present swap chain image!");
 		}
 
-		currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
-
 		// Change current frame
 		currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 	}
@@ -119,12 +117,15 @@ namespace Simple3D {
 		renderPassInfo.pClearValues = &clearColor; 
 
 
+		// Begin render pass
 		vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+		// Bind pipeline for render pass
 		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->GetPipeline());
 
 
 
-		// Define viewport + sizzor
+		// Define viewport
 		VkViewport viewport{};
 		viewport.x = 0.0f;
 		viewport.y = 0.0f;
@@ -134,13 +135,21 @@ namespace Simple3D {
 		viewport.maxDepth = 1.0f;
 		vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
 
+		// Define sissor
 		VkRect2D scissor{};
 		scissor.offset = { 0, 0 };
 		scissor.extent = swapChain->GetSwapChainExtent();
 		vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
 
-		vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+		// Draw Models ect
+		
+		//vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+
+
+
+
+		// End render pass
 		vkCmdEndRenderPass(commandBuffer); 
 
 		if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) { 
@@ -185,9 +194,6 @@ namespace Simple3D {
 
 	// Destructor
 	Renderer::~Renderer() {
-		if (useValidationLayers) {
-			DestroyDebugUtilsMessengerEXT(instance, debugMessenger, nullptr);
-		}
 
 		for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
 			vkDestroySemaphore(RenderDevice->getLogicalDevice(), renderFinishedSemaphores[i], nullptr);
@@ -208,6 +214,11 @@ namespace Simple3D {
 		delete swapChain;
 		delete RenderDevice;
 		vkDestroySurfaceKHR(instance, surface, nullptr);
+
+
+		if (enableValidationLayers) { 
+			DestroyDebugUtilsMessengerEXT(instance, debugMessenger, nullptr); 
+		}
 		vkDestroyInstance(instance, nullptr);
 	}
 
@@ -238,11 +249,12 @@ namespace Simple3D {
 		// Validation layers -- Checking for support
 		if (enableValidationLayers && !checkValidationLayerSupport()) {
 			printf("validation layers requested, but not available!\n");
-			useValidationLayers = false;
+			//enableValidationLayers = false;
+			throw std::runtime_error("validation layers requested, but not available!\n");
 		}
 
 		// Handle validation layers
-		if (useValidationLayers) {
+		if (enableValidationLayers) {
 			createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
 			createInfo.ppEnabledLayerNames = validationLayers.data();
 		}
@@ -299,7 +311,7 @@ namespace Simple3D {
 
 
 	void Renderer::setupDebugMessenger() {
-		if (!useValidationLayers) return;
+		if (!enableValidationLayers) return;
 	
 		VkDebugUtilsMessengerCreateInfoEXT createInfo{};
 		createInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;

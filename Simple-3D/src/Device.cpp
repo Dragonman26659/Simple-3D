@@ -273,4 +273,8 @@ namespace Simple3D {
 	VkQueue Device::getVKpresentQueue() {
 		return graphicsQueue;
 	}
+
+	VkPhysicalDevice Device::getPhysicalDevice() {
+		return physicalDevice;
+	}
 }

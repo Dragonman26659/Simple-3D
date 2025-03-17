@@ -23,7 +23,7 @@ project "Simple-3D"
         "Simple-3D/include",
         "vendor/GLFW/include",
         "vendor/SDL/include",
-        "vendor/Vulkan/Include"
+        "vendor/Vulkan/Include",
         "vendor/glm"
     }
 
@@ -74,7 +74,8 @@ project "GLFW-Example"
     includedirs {
         "Simple-3D/include",
         "vendor/GLFW/include",
-        "vendor/Vulkan/Include"
+        "vendor/Vulkan/Include",
+        "vendor/glm"
     }
 
 
@@ -121,7 +122,8 @@ project "SDL-Example"
     includedirs {
         "Simple-3D/include",
         "vendor/SDL/include",
-        "vendor/Vulkan/Include"
+        "vendor/Vulkan/Include",
+        "vendor/glm"
     }
 
     libdirs { 

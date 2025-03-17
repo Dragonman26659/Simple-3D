@@ -51,7 +51,7 @@ int main() {
 
 
 	delete renderer;
-	glfwDestroyWindow(window);
+	glfwDestroyWindow(window); 
 
 	return 0;
 }

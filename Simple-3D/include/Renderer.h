@@ -74,7 +74,9 @@ namespace Simple3D {
 			return 1;
 		}
 		
+	private:
 		SDL_Window* window;
+	public:
 
 #else
 		// GLFW specific Constructor
@@ -132,7 +134,9 @@ namespace Simple3D {
 
 
 		// GLFW window
+		private:
 		GLFWwindow* window;
+		public:
 #endif
 
 
@@ -204,7 +208,6 @@ namespace Simple3D {
 		void createSyncObjects();
 
 		// Debug info
-		bool useValidationLayers = enableValidationLayers;
 		void setupDebugMessenger();
 		void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT debugMessenger, const VkAllocationCallbacks* pAllocator);
 
