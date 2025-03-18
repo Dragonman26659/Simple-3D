@@ -143,8 +143,13 @@ namespace Simple3D {
 
 
 		// Draw Models ect
-		
-		//vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+
+
+		VkBuffer vertexBuffers[] = { model.GetVertexBuffer()};
+		VkDeviceSize offsets[] = { 0 };
+		vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
+
+		vkCmdDraw(commandBuffer, static_cast<uint32_t>(model.GetVerticies().size()), 1, 0, 0);
 
 
 
@@ -194,6 +199,8 @@ namespace Simple3D {
 
 	// Destructor
 	Renderer::~Renderer() {
+		// TEMP
+		model.DestroyVkBuffer();
 
 		for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
 			vkDestroySemaphore(RenderDevice->getLogicalDevice(), renderFinishedSemaphores[i], nullptr);

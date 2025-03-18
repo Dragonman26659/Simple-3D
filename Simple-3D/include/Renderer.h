@@ -3,10 +3,23 @@
 
 
 // Simple 3D
+
+// Internal
 #include "Internal/Device.h"
 #include "Internal/SwapChain.h"
 #include "Internal/Pipeline.h"
 
+
+// Components
+#include "Component/Renderable/Model.h"
+
+
+// Test for now (will replace with model class later on)
+const std::vector<Vertex> TriangleVertices = {
+	{{0.0f, -0.5f}, {1.0f, 1.0f, 1.0f}},
+	{{0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}},
+	{{-0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}}
+};
 
 namespace Simple3D {
 	const std::vector<const char*> validationLayers = {
@@ -81,7 +94,7 @@ namespace Simple3D {
 #else
 		// GLFW specific Constructor
 		Renderer(GLFWwindow* window, std::string EngineName, std::string ApplicationName) 
-			: window(window) {
+			: window(window), model(TriangleVertices) {
 			// Get Information from window
 			int width, height;
 
@@ -117,6 +130,8 @@ namespace Simple3D {
 
 			// Create sync objects
 			createSyncObjects();
+
+			model.CreateVertexBuffer(RenderDevice);
 		}
 
 
@@ -147,6 +162,7 @@ namespace Simple3D {
 		void Render();
 		void WaitToFinish();
 		void RecreateSwapChain();
+		void SumbitModelToFrame(Model model);
 
 
 	private:
@@ -191,8 +207,8 @@ namespace Simple3D {
 		// Store the current frame we are on
 		uint32_t currentFrame = 0;
 
-		// Has it resized
-		//bool framebufferResized = false;
+		// TEMP
+		Model model;
 
 		// Create instance
 		void CreateInstance(std::string EngineName, std::string ApplicationName);
