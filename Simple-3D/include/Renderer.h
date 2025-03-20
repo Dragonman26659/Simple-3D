@@ -16,9 +16,14 @@
 
 // Test for now (will replace with model class later on)
 const std::vector<Vertex> TriangleVertices = {
-	{{0.0f, -0.5f}, {1.0f, 1.0f, 1.0f}},
-	{{0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}},
-	{{-0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}}
+	{{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
+	{{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
+	{{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
+	{{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}}
+};
+
+const std::vector<uint16_t> TriangleIndices = {
+	0, 1, 2, 2, 3, 0
 };
 
 namespace Simple3D {
@@ -94,7 +99,7 @@ namespace Simple3D {
 #else
 		// GLFW specific Constructor
 		Renderer(GLFWwindow* window, std::string EngineName, std::string ApplicationName) 
-			: window(window), model(TriangleVertices) {
+			: window(window) {
 			// Get Information from window
 			int width, height;
 
@@ -130,8 +135,6 @@ namespace Simple3D {
 
 			// Create sync objects
 			createSyncObjects();
-
-			model.CreateVertexBuffer(RenderDevice);
 		}
 
 
@@ -162,7 +165,7 @@ namespace Simple3D {
 		void Render();
 		void WaitToFinish();
 		void RecreateSwapChain();
-		void SumbitModelToFrame(Model model);
+		void SumbitModelToFrame(Model* model);
 
 
 	private:
@@ -207,8 +210,8 @@ namespace Simple3D {
 		// Store the current frame we are on
 		uint32_t currentFrame = 0;
 
-		// TEMP
-		Model model;
+		// Models
+		std::vector<Model*> ModelsThisFrame;
 
 		// Create instance
 		void CreateInstance(std::string EngineName, std::string ApplicationName);

@@ -31,7 +31,7 @@ int main() {
 
 	// Create renderer
 	Simple3D::Renderer* renderer = new Simple3D::Renderer(window, "No engine", "GLFW Example");
-
+	Simple3D::Model* myModel = new Simple3D::Model(TriangleVertices, TriangleIndices);
 
 
 	while (!glfwWindowShouldClose(window))
@@ -40,7 +40,7 @@ int main() {
 
 
 		// Submit models to be rendered Ect
-
+		renderer->SumbitModelToFrame(myModel);
 
 
 		// Render
@@ -49,7 +49,7 @@ int main() {
 
 	renderer->WaitToFinish();
 
-
+	delete myModel;
 	delete renderer;
 	glfwDestroyWindow(window); 
 

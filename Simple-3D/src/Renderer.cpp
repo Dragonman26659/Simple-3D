@@ -85,6 +85,10 @@ namespace Simple3D {
 
 		// Change current frame
 		currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
+
+
+		// Reset the vector of models
+		ModelsThisFrame.clear();
 	}
 
 
@@ -142,15 +146,20 @@ namespace Simple3D {
 		vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
 
-		// Draw Models ect
+		// Draw Models
+		for (Model* model : ModelsThisFrame) {
+			if (!model->hasBuffer()) {
+				model->CreateBuffers(RenderDevice, &commandPool);
+			}
 
+			VkBuffer vertexBuffers[] = { model->GetVertexBuffer() };
+			VkDeviceSize offsets[] = { 0 };
+			vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
 
-		VkBuffer vertexBuffers[] = { model.GetVertexBuffer()};
-		VkDeviceSize offsets[] = { 0 };
-		vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
+			vkCmdBindIndexBuffer(commandBuffer, model->GetIndexBuffer(), 0, VK_INDEX_TYPE_UINT16);
 
-		vkCmdDraw(commandBuffer, static_cast<uint32_t>(model.GetVerticies().size()), 1, 0, 0);
-
+			vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(model->Indices.size()), 1, 0, 0, 0);
+		}
 
 
 
@@ -161,6 +170,10 @@ namespace Simple3D {
 			printf("failed to record command buffer!");
 			throw std::runtime_error("failed to record command buffer!");
 		}
+	}
+
+	void Renderer::SumbitModelToFrame(Model* model) {
+		ModelsThisFrame.push_back(model);
 	}
 
 	
@@ -199,9 +212,6 @@ namespace Simple3D {
 
 	// Destructor
 	Renderer::~Renderer() {
-		// TEMP
-		model.DestroyVkBuffer();
-
 		for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
 			vkDestroySemaphore(RenderDevice->getLogicalDevice(), renderFinishedSemaphores[i], nullptr);
 			vkDestroySemaphore(RenderDevice->getLogicalDevice(), imageAvailableSemaphores[i], nullptr);
