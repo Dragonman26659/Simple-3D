@@ -2,7 +2,7 @@
 #include "SimpleCore.h"
 
 #include "Device.h"
-
+#include "Tools.h"
 
 namespace Simple3D {
 
@@ -18,7 +18,13 @@ namespace Simple3D {
 		~Pipeline();
 
 
-		VkPipeline GetPipeline();
+		VkPipeline			GetPipeline();
+		VkPipelineLayout	GetLayout();
+		void				updateUniformBuffer(uint32_t currentImage, glm::mat4 PerspectiveMatrix, glm::mat4 ViewMatrix, glm::mat4 transform);
+
+
+		// Make discriptor sets public cuz fuck getters
+		std::vector<VkDescriptorSet> descriptorSets;
 
 	private:
 		Device& s_Device;
@@ -34,7 +40,27 @@ namespace Simple3D {
 		VkPipelineLayout pipelineLayout;
 		VkPipeline graphicsPipeline; 
 
-		void CreatePipeline();
-		VkShaderModule createShaderModule(const std::vector<char>& code);
+		// Discriptor set
+		VkDescriptorSetLayout descriptorSetLayout;
+		VkDescriptorPool descriptorPool;
+
+		// Uniform Buffers
+		std::vector<VkBuffer> uniformBuffers;
+		std::vector<VkDeviceMemory> uniformBuffersMemory;
+		std::vector<void*> uniformBuffersMapped;
+
+
+
+
+		void			CreatePipeline();
+		VkShaderModule	createShaderModule(const std::vector<char>& code);
+
+
+
+		// Uniform Buffers
+		void			createUniformBuffers();
+		void			createDescriptorSetLayout();
+		void			createDescriptorPool();
+		void			createDescriptorSets();
 	};
 }

@@ -22,9 +22,12 @@ const bool enableValidationLayers = true;
 #include "GLFW/glfw3.h"
 #endif
 
+#define GLM_FORCE_DEFAULT_ALIGNED_GENTYPES
+
 // 3rd party libs
 #include "vulkan/vulkan.h"
 #include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 
 
 // Standard
@@ -39,6 +42,7 @@ const bool enableValidationLayers = true;
 #include <algorithm>
 #include <fstream>
 #include <array>
+#include <chrono>
 
 
 // Common structs
@@ -77,6 +81,34 @@ struct Vertex {
     }
 };
 
+// Transform Object
+struct UniformBufferObject {
+    glm::mat4 model;
+    glm::mat4 view;
+    glm::mat4 proj;
+};
+
+
+
+// TEMP
+// Test for now (will replace with model class later on)
+const std::vector<Vertex> TriangleVertices = {
+    {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
+    {{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
+    {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
+    {{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}}
+};
+
+const std::vector<uint16_t> TriangleIndices = {
+    0, 1, 2, 2, 3, 0
+};
+// /Temp
+
+const std::vector<const char*> validationLayers = {
+    "VK_LAYER_KHRONOS_validation"
+};
+
+const int MAX_FRAMES_IN_FLIGHT = 2;
 
 
 // Helper function for error messages

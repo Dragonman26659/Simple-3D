@@ -29,10 +29,20 @@ int main() {
 
 
 
-	// Create renderer
+	// Create Objects
 	Simple3D::Renderer* renderer = new Simple3D::Renderer(window, "No engine", "GLFW Example");
 	Simple3D::Model* myModel = new Simple3D::Model(TriangleVertices, TriangleIndices);
+	Simple3D::Camera* mainCam = new Simple3D::Camera();
 
+
+	// Set Positions
+	mainCam->setPosition(glm::vec3(0.0f, 0.0f, 2.0f));
+
+	myModel->SetTransform(glm::mat4(1.0f));
+
+	mainCam->lookAt(glm::vec3(0.0f));
+
+	renderer->SubmitMainCamera(mainCam);
 
 	while (!glfwWindowShouldClose(window))
 	{
@@ -50,6 +60,7 @@ int main() {
 	renderer->WaitToFinish();
 
 	delete myModel;
+	delete mainCam;
 	delete renderer;
 	glfwDestroyWindow(window); 
 

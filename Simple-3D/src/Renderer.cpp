@@ -124,42 +124,47 @@ namespace Simple3D {
 		// Begin render pass
 		vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-		// Bind pipeline for render pass
-		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->GetPipeline());
+			// Bind pipeline for render pass
+			vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->GetPipeline());
 
 
 
-		// Define viewport
-		VkViewport viewport{};
-		viewport.x = 0.0f;
-		viewport.y = 0.0f;
-		viewport.width = static_cast<float>(swapChain->GetSwapChainExtent().width);
-		viewport.height = static_cast<float>(swapChain->GetSwapChainExtent().height);
-		viewport.minDepth = 0.0f;
-		viewport.maxDepth = 1.0f;
-		vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+			// Define viewport
+			VkViewport viewport{};
+			viewport.x = 0.0f;
+			viewport.y = 0.0f;
+			viewport.width = static_cast<float>(swapChain->GetSwapChainExtent().width);
+			viewport.height = static_cast<float>(swapChain->GetSwapChainExtent().height);
+			viewport.minDepth = 0.0f;
+			viewport.maxDepth = 1.0f;
+			vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
 
-		// Define sissor
-		VkRect2D scissor{};
-		scissor.offset = { 0, 0 };
-		scissor.extent = swapChain->GetSwapChainExtent();
-		vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+			// Define sissor
+			VkRect2D scissor{};
+			scissor.offset = { 0, 0 };
+			scissor.extent = swapChain->GetSwapChainExtent();
+			vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
 
-		// Draw Models
-		for (Model* model : ModelsThisFrame) {
-			if (!model->hasBuffer()) {
-				model->CreateBuffers(RenderDevice, &commandPool);
+			// Draw Models
+			for (Model* model : ModelsThisFrame) {
+				if (!model->hasBuffer()) {
+					model->CreateBuffers(RenderDevice, &commandPool);
+				}
+
+				// UPdate with models position and shizzle
+				pipeline->updateUniformBuffer(currentFrame, mainCamera->getProjectionMatrix(GetWindowWidth(), GetWindowHeight()), mainCamera->getViewMatrix(), model->GetTransform());
+
+				VkBuffer vertexBuffers[] = { model->GetVertexBuffer() };
+				VkDeviceSize offsets[] = { 0 };
+				vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
+
+				vkCmdBindIndexBuffer(commandBuffer, model->GetIndexBuffer(), 0, VK_INDEX_TYPE_UINT16);
+
+				vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->GetLayout(), 0, 1, &pipeline->descriptorSets[currentFrame], 0, nullptr);
+
+				vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(model->Indices.size()), 1, 0, 0, 0);
 			}
-
-			VkBuffer vertexBuffers[] = { model->GetVertexBuffer() };
-			VkDeviceSize offsets[] = { 0 };
-			vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
-
-			vkCmdBindIndexBuffer(commandBuffer, model->GetIndexBuffer(), 0, VK_INDEX_TYPE_UINT16);
-
-			vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(model->Indices.size()), 1, 0, 0, 0);
-		}
 
 
 
@@ -175,6 +180,12 @@ namespace Simple3D {
 	void Renderer::SumbitModelToFrame(Model* model) {
 		ModelsThisFrame.push_back(model);
 	}
+
+	void Renderer::SubmitMainCamera(Camera* cam) {
+		mainCamera = cam;
+	}
+
+
 
 	
 

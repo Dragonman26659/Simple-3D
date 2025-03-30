@@ -4,6 +4,10 @@
 #include "Internal/Tools.h"
 
 namespace Simple3D {
+
+
+
+
     class Model {
     public:
         Model(std::vector<Vertex> verticies, std::vector<uint16_t> indices);
@@ -19,6 +23,9 @@ namespace Simple3D {
         void CreateBuffers(Device* device, VkCommandPool* commandPool);
         void DestroyBuffers();
 
+        void SetTransform(glm::mat4 transform);
+        glm::mat4 GetTransform();
+
         std::vector<Vertex> Verticies;
         std::vector<uint16_t> Indices;
     private:
@@ -28,9 +35,14 @@ namespace Simple3D {
 
         // Buffers
         VkBuffer vertexBuffer;
-        VkDeviceMemory vertexBufferMemory;
         VkBuffer indexBuffer;
+
+        // Buffer Memory
         VkDeviceMemory indexBufferMemory;
+        VkDeviceMemory vertexBufferMemory;
+
+        // transform
+        glm::mat4 transform;
 
         bool BufferEnabled = false;
 

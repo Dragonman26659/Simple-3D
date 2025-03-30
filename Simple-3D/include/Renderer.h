@@ -12,29 +12,10 @@
 
 // Components
 #include "Component/Renderable/Model.h"
+#include "Component/Tools/Camera.h"
 
-
-// Test for now (will replace with model class later on)
-const std::vector<Vertex> TriangleVertices = {
-	{{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
-	{{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
-	{{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
-	{{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}}
-};
-
-const std::vector<uint16_t> TriangleIndices = {
-	0, 1, 2, 2, 3, 0
-};
 
 namespace Simple3D {
-	const std::vector<const char*> validationLayers = {
-		"VK_LAYER_KHRONOS_validation"
-	};
-
-
-	const int MAX_FRAMES_IN_FLIGHT = 2;
-
-
 	class Renderer {
 	public:
 // Changes based on if you use SDL or GLFW for windowing
@@ -165,8 +146,10 @@ namespace Simple3D {
 		void Render();
 		void WaitToFinish();
 		void RecreateSwapChain();
-		void SumbitModelToFrame(Model* model);
 
+
+		void SumbitModelToFrame(Model* model);
+		void SubmitMainCamera(Camera* cam);
 
 	private:
 		// Vulkan Instance
@@ -197,11 +180,15 @@ namespace Simple3D {
 		// Framebuffer
 		std::vector<VkFramebuffer> swapChainFramebuffers;
 
-
 		// Device, swapchain and pipeline (ik useful comment)
 		Device* RenderDevice;
 		SwapChain* swapChain;
 		Pipeline* pipeline;
+
+
+
+		// Camera
+		Camera* mainCamera;
 
 		// Information gathered from windows
 		const char** WindowExtensions;

@@ -86,11 +86,19 @@ namespace Simple3D {
         vkFreeMemory(r_device->getLogicalDevice(), stagingBufferMemory, nullptr);
     }
 
+    void Model::SetTransform(glm::mat4 n_transform) {
+        transform = n_transform;
+    }
+
     bool Model::hasBuffer() {
         return BufferEnabled;
     }
 
     std::vector<Vertex> Model::GetVerticies() {
         return Verticies;
+    }
+
+    glm::mat4 Model::GetTransform() {
+        return transform;
     }
 } 
