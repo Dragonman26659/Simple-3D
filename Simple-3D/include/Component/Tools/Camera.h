@@ -4,11 +4,6 @@
 
 /*
 Needs to have an orthographic and perspective mode so that i can do both 2D and 3D rendering
-
-
-
-
-
 */
 
 
@@ -24,7 +19,8 @@ namespace Simple3D {
             nearPlane(nearPlane),
             farPlane(farPlane),
             orthoWidth(5.0f),
-            orthoHeight(5.0f * (16.0f / 9.0f)) {}
+            orthoHeight(5.0f) {}
+
 
         void setPosition(const glm::vec3& pos);
 
@@ -34,6 +30,12 @@ namespace Simple3D {
 
         glm::mat4 getViewMatrix() const;
 
+        /// <summary>
+        /// Generates and returns Projection matrix
+        /// </summary>
+        /// <param name="viewportWidth">Width of current viewport</param>
+        /// <param name="viewportHeight">HEight of current viewport</param>
+        /// <returns> Projection Matrix</returns>
         glm::mat4 getProjectionMatrix(float viewportWidth, float viewportHeight) const;
 
         // Getters for camera properties

@@ -1,5 +1,6 @@
 #pragma once
 #include "SimpleCore.h"
+#include "Tools.h"
 #include "Device.h"
 
 

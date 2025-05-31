@@ -8,6 +8,7 @@
 #include "Internal/Device.h"
 #include "Internal/SwapChain.h"
 #include "Internal/Pipeline.h"
+#include "Internal/DepthBuffer.h"
 
 
 // Components
@@ -22,46 +23,7 @@ namespace Simple3D {
 #ifdef SDL_WINDOW
 		Renderer(SDL_Window* window, std::string EngineName, std::string ApplicationName) 
 			: window(window) {
-			// Get Information from window
-			SDL_SysWMinfo wmi;
-			SDL_VERSION(&wmi.version);
-			SDL_GetWindowWMInfo(window, &wmi);
-			WindowExtensions = SDL_Vulkan_GetInstanceExtensions(&WindowExtensionCount);
 
-			// Get window dimensions
-			int width, height;
-			SDL_GetWindowSize(window, &width, &height);
-
-			// Create Instance
-			CreateInstance(EngineName, ApplicationName);
-
-			// Create Window Surface
-			VkResult result = vkCreateWin32SurfaceKHR(instance, &wmi.info.win, nullptr, &surface);
-			if (result != VK_SUCCESS) {
-				printf("failed to create window surface!");
-				throw std::runtime_error("failed to create window surface!");
-			}
-
-			// Create device & swapchain
-			RenderDevice = new Device(instance, surface);
-			swapChain = new SwapChain(*RenderDevice, surface, width, height);
-
-			// Create render pass
-			CreateRenderPass();
-
-			// Create pipelines
-			pipeline = new Pipeline(*RenderDevice, renderPass);
-
-			// Create frame buffers
-			createFramebuffers();
-
-
-			// Create Command Buffers
-			createCommandPool();
-			createCommandBuffer();
-
-			// Create sync objects
-			createSyncObjects();
 		}
 
 
@@ -71,6 +33,9 @@ namespace Simple3D {
 
 		int GetWindowHeight() {
 			return 1;
+		}
+
+		bool isMinimised() {
 		}
 		
 	private:
@@ -103,20 +68,24 @@ namespace Simple3D {
 			// Create render pass
 			CreateRenderPass();
 
-			// Create pipelines
-			pipeline = new Pipeline(*RenderDevice, renderPass);
+			// Create Command Buffers
+			createCommandPool();
+
+			// Create depth buffer
+			depthBuffer = new DepthBuffer(RenderDevice, swapChain, &commandPool);
 
 			// Create frame buffers
 			createFramebuffers();
 
-
-			// Create Command Buffers
-			createCommandPool();
 			createCommandBuffer();
 
 			// Create sync objects
 			createSyncObjects();
 		}
+
+
+
+		void InitaliseRenderer();
 
 
 		int GetWindowWidth() {
@@ -131,6 +100,9 @@ namespace Simple3D {
 			return height;
 		}
 
+		bool isMinimised() {
+			return glfwGetWindowAttrib(window, GLFW_ICONIFIED);
+		}
 
 		// GLFW window
 		private:
@@ -147,7 +119,7 @@ namespace Simple3D {
 		void WaitToFinish();
 		void RecreateSwapChain();
 
-
+		Material* CreateMaterial(MaterialInfo info);
 		void SumbitModelToFrame(Model* model);
 		void SubmitMainCamera(Camera* cam);
 
@@ -183,8 +155,14 @@ namespace Simple3D {
 		// Device, swapchain and pipeline (ik useful comment)
 		Device* RenderDevice;
 		SwapChain* swapChain;
-		Pipeline* pipeline;
 
+
+		// Store one pipeline per material
+		std::unordered_map<Material*, Pipeline*> materials;
+
+
+		// DepthBuffer
+		DepthBuffer* depthBuffer;
 
 
 		// Camera

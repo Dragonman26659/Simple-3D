@@ -4,6 +4,8 @@
 #include "Device.h"
 #include "Tools.h"
 
+#include "Component/Tools/Material.h"
+
 namespace Simple3D {
 
 	// Configures ALL pipelines together
@@ -14,7 +16,7 @@ namespace Simple3D {
 
 	class Pipeline {
 	public:
-		Pipeline(Device& s_Device, VkRenderPass& renderPass);
+		Pipeline(Device& s_Device, VkRenderPass& renderPass, Material* materialBinding);
 		~Pipeline();
 
 
@@ -28,8 +30,7 @@ namespace Simple3D {
 
 	private:
 		Device& s_Device;
-		const std::string& fragment = "shaders/frag.spv";
-		const std::string& vertex = "shaders/vert.spv";
+		Material* material;
 
 		static std::vector<char> readFile(const std::string& filename);
 
@@ -57,7 +58,7 @@ namespace Simple3D {
 
 
 
-		// Uniform Buffers
+		// Uniform Buffers & samplers
 		void			createUniformBuffers();
 		void			createDescriptorSetLayout();
 		void			createDescriptorPool();

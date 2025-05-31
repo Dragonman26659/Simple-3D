@@ -4,7 +4,7 @@
 
 
 namespace Simple3D {
-    Pipeline::Pipeline(Device& device, VkRenderPass& renderPass) : s_Device(device), renderPass(renderPass) {
+    Pipeline::Pipeline(Device& device, VkRenderPass& renderPass, Material* materialBinding) : s_Device(device), renderPass(renderPass), material(materialBinding) {
         createDescriptorSetLayout();
         CreatePipeline();
 
@@ -51,8 +51,8 @@ namespace Simple3D {
 
 
     void Pipeline::CreatePipeline() {
-        auto vertShaderCode = readFile(vertex);
-        auto fragShaderCode = readFile(fragment);
+        auto vertShaderCode = readFile(material->vertexSource);
+        auto fragShaderCode = readFile(material->FragmentSource);
 
         VkShaderModule vertShaderModule = createShaderModule(vertShaderCode);
         VkShaderModule fragShaderModule = createShaderModule(fragShaderCode);
@@ -98,8 +98,8 @@ namespace Simple3D {
         rasterizer.rasterizerDiscardEnable = VK_FALSE;
         rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
         rasterizer.lineWidth = 1.0f;
-        //rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
-        //rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+        rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
+        rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
         rasterizer.depthBiasEnable = VK_FALSE;
 
         VkPipelineMultisampleStateCreateInfo multisampling{};
@@ -131,6 +131,18 @@ namespace Simple3D {
         dynamicState.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());
         dynamicState.pDynamicStates = dynamicStates.data();
 
+        VkPipelineDepthStencilStateCreateInfo depthStencil{};
+        depthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+        depthStencil.depthTestEnable = VK_TRUE;
+        depthStencil.depthWriteEnable = VK_TRUE;
+        depthStencil.depthCompareOp = VK_COMPARE_OP_LESS;
+        depthStencil.depthBoundsTestEnable = VK_FALSE;
+        depthStencil.minDepthBounds = 0.0f; // Optional
+        depthStencil.maxDepthBounds = 1.0f; // Optional
+        depthStencil.stencilTestEnable = VK_FALSE;
+        depthStencil.front = {}; // Optional
+        depthStencil.back = {}; // Optional
+
         VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
         pipelineLayoutInfo.pushConstantRangeCount = 0;
         pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
@@ -156,6 +168,7 @@ namespace Simple3D {
         pipelineInfo.renderPass = renderPass;
         pipelineInfo.subpass = 0;
         pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
+        pipelineInfo.pDepthStencilState = &depthStencil;
 
         if (vkCreateGraphicsPipelines(s_Device.getLogicalDevice(), VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &graphicsPipeline) != VK_SUCCESS) {
             throw std::runtime_error("failed to create graphics pipeline!");
@@ -189,10 +202,18 @@ namespace Simple3D {
         uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
         uboLayoutBinding.pImmutableSamplers = nullptr;
 
+        VkDescriptorSetLayoutBinding samplerLayoutBinding{};
+        samplerLayoutBinding.binding = 1;
+        samplerLayoutBinding.descriptorCount = 1;
+        samplerLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        samplerLayoutBinding.pImmutableSamplers = nullptr;
+        samplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+        std::array<VkDescriptorSetLayoutBinding, 2> bindings = { uboLayoutBinding, samplerLayoutBinding };
         VkDescriptorSetLayoutCreateInfo layoutInfo{};
         layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        layoutInfo.bindingCount = 1;
-        layoutInfo.pBindings = &uboLayoutBinding;
+        layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
+        layoutInfo.pBindings = bindings.data();
 
         if (vkCreateDescriptorSetLayout(s_Device.getLogicalDevice(), &layoutInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS) {
             throw std::runtime_error("failed to create descriptor set layout!");
@@ -201,22 +222,32 @@ namespace Simple3D {
 
 
     void Pipeline::createDescriptorPool() {
-        VkDescriptorPoolSize poolSize{};
-        poolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        poolSize.descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+        // Create pool sizes vector
+        std::vector<VkDescriptorPoolSize> poolSizes;
 
+        // Uniform buffer pool size
+        poolSizes.push_back({});
+        poolSizes.back().type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        poolSizes.back().descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+
+        // Combined image sampler pool size
+        if (!material->textures.empty()) {
+            poolSizes.push_back({});
+            poolSizes.back().type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            poolSizes.back().descriptorCount = static_cast<uint32_t>(material->textures.size());
+        }
+
+        // Create descriptor pool
         VkDescriptorPoolCreateInfo poolInfo{};
         poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-        poolInfo.poolSizeCount = 1;
-        poolInfo.pPoolSizes = &poolSize;
+        poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
+        poolInfo.pPoolSizes = poolSizes.data();
         poolInfo.maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
-
 
         if (vkCreateDescriptorPool(s_Device.getLogicalDevice(), &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) {
             throw std::runtime_error("failed to create descriptor pool!");
         }
     }
-
 
     void Pipeline::createDescriptorSets() {
         std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, descriptorSetLayout);
@@ -237,6 +268,36 @@ namespace Simple3D {
             bufferInfo.offset = 0;
             bufferInfo.range = sizeof(UniformBufferObject);
 
+            // Only create image descriptors if we have textures
+            if (material->textures.empty()) {
+                // Create a single descriptor write for the uniform buffer
+                VkWriteDescriptorSet descriptorWrite{};
+                descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                descriptorWrite.dstSet = descriptorSets[i];
+                descriptorWrite.dstBinding = 0;
+                descriptorWrite.dstArrayElement = 0;
+                descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+                descriptorWrite.descriptorCount = 1;
+                descriptorWrite.pBufferInfo = &bufferInfo;
+
+                vkUpdateDescriptorSets(s_Device.getLogicalDevice(), 1, &descriptorWrite, 0, nullptr);
+                continue;
+            }
+
+            // Create descriptor writes for textures
+            std::vector<VkDescriptorImageInfo> descriptorImageInfos;
+            material->updateSortedTextureNames();  // Ensure names are sorted
+
+            descriptorImageInfos.reserve(material->textures.size());
+            for (const auto& textureName : material->sortedTextureNames) {
+                const auto& binding = material->textures[textureName];
+                descriptorImageInfos.emplace_back(VkDescriptorImageInfo());
+                descriptorImageInfos.back().imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                descriptorImageInfos.back().imageView = binding.view;
+                descriptorImageInfos.back().sampler = binding.sampler;
+            }
+
+            // Create descriptor writes
             VkWriteDescriptorSet descriptorWrite{};
             descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
             descriptorWrite.dstSet = descriptorSets[i];
@@ -245,6 +306,23 @@ namespace Simple3D {
             descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
             descriptorWrite.descriptorCount = 1;
             descriptorWrite.pBufferInfo = &bufferInfo;
+
+            // Update uniform buffer descriptor
+            vkUpdateDescriptorSets(s_Device.getLogicalDevice(), 1, &descriptorWrite, 0, nullptr);
+
+            // Update texture descriptors
+            for (size_t j = 0; j < descriptorImageInfos.size(); j++) {
+                VkWriteDescriptorSet textureWrite{};
+                textureWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                textureWrite.dstSet = descriptorSets[i];
+                textureWrite.dstBinding = 1;  // Texture binding
+                textureWrite.dstArrayElement = j;
+                textureWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+                textureWrite.descriptorCount = 1;
+                textureWrite.pImageInfo = &descriptorImageInfos[j];
+
+                vkUpdateDescriptorSets(s_Device.getLogicalDevice(), 1, &textureWrite, 0, nullptr);
+            }
 
             vkUpdateDescriptorSets(s_Device.getLogicalDevice(), 1, &descriptorWrite, 0, nullptr);
         }

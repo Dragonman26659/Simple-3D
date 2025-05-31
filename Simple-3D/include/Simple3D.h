@@ -9,3 +9,5 @@
 #endif
 
 #include "Renderer.h"
+#include "SimpleCore.h"
+#include "Component/Tools/Material.h"

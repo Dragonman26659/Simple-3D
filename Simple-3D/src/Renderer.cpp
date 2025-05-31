@@ -18,6 +18,18 @@ namespace Simple3D {
 
 	// Actual render loop :0
 	void Renderer::Render() {
+
+
+		// Dont render if minimised
+		if (isMinimised()) {
+			// Reset the vector of models to prevent memory leak
+			ModelsThisFrame.clear();
+			return;
+		}
+
+
+
+
 		// Wait for last frame and reset fences
 		vkWaitForFences(RenderDevice->getLogicalDevice(), 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
 
@@ -96,7 +108,9 @@ namespace Simple3D {
 
 	// Command buffer recording
 	void Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex) {
-		VkClearValue clearColor = { {{0.0f, 0.0f, 0.0f, 1.0f}} }; // Make this controlled by a variable eventually
+		std::array<VkClearValue, 2> clearValues{};
+		clearValues[0].color = { {0.0f, 0.0f, 0.0f, 1.0f} };
+		clearValues[1].depthStencil = { 1.0f, 0 };
 
 		// Begin to record
 		VkCommandBufferBeginInfo beginInfo{}; 
@@ -117,40 +131,40 @@ namespace Simple3D {
 		renderPassInfo.framebuffer = swapChainFramebuffers[imageIndex];
 		renderPassInfo.renderArea.offset = { 0, 0 };
 		renderPassInfo.renderArea.extent = swapChain->GetSwapChainExtent();
-		renderPassInfo.clearValueCount = 1; 
-		renderPassInfo.pClearValues = &clearColor; 
+		renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
+		renderPassInfo.pClearValues = clearValues.data();
 
 
 		// Begin render pass
 		vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
-
-			// Bind pipeline for render pass
-			vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->GetPipeline());
-
-
-
-			// Define viewport
-			VkViewport viewport{};
-			viewport.x = 0.0f;
-			viewport.y = 0.0f;
-			viewport.width = static_cast<float>(swapChain->GetSwapChainExtent().width);
-			viewport.height = static_cast<float>(swapChain->GetSwapChainExtent().height);
-			viewport.minDepth = 0.0f;
-			viewport.maxDepth = 1.0f;
-			vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
-
-			// Define sissor
-			VkRect2D scissor{};
-			scissor.offset = { 0, 0 };
-			scissor.extent = swapChain->GetSwapChainExtent();
-			vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
-
 
 			// Draw Models
 			for (Model* model : ModelsThisFrame) {
 				if (!model->hasBuffer()) {
 					model->CreateBuffers(RenderDevice, &commandPool);
 				}
+
+				// Bind pipeline for render pass
+				auto pipeline = materials[model->material];
+				vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->GetPipeline());
+
+
+
+				// Define viewport
+				VkViewport viewport{};
+				viewport.x = 0.0f;
+				viewport.y = 0.0f;
+				viewport.width = static_cast<float>(swapChain->GetSwapChainExtent().width);
+				viewport.height = static_cast<float>(swapChain->GetSwapChainExtent().height);
+				viewport.minDepth = 0.0f;
+				viewport.maxDepth = 1.0f;
+				vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+
+				// Define sissor
+				VkRect2D scissor{};
+				scissor.offset = { 0, 0 };
+				scissor.extent = swapChain->GetSwapChainExtent();
+				vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
 				// UPdate with models position and shizzle
 				pipeline->updateUniformBuffer(currentFrame, mainCamera->getProjectionMatrix(GetWindowWidth(), GetWindowHeight()), mainCamera->getViewMatrix(), model->GetTransform());
@@ -164,6 +178,7 @@ namespace Simple3D {
 				vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->GetLayout(), 0, 1, &pipeline->descriptorSets[currentFrame], 0, nullptr);
 
 				vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(model->Indices.size()), 1, 0, 0, 0);
+
 			}
 
 
@@ -183,6 +198,18 @@ namespace Simple3D {
 
 	void Renderer::SubmitMainCamera(Camera* cam) {
 		mainCamera = cam;
+	}
+
+
+
+	// Creates a material given a material create struct, Material memory is handled by renderer
+	Material* Renderer::CreateMaterial(MaterialInfo info) {
+		Material* material = new Material(RenderDevice, &commandPool, info.vertexSource, info.FragmentSource, info.textures);
+
+		// Add material to the materials map with a new pipeline
+		materials[material] = new Pipeline(*RenderDevice, renderPass, material);
+
+		return material;
 	}
 
 
@@ -220,33 +247,56 @@ namespace Simple3D {
 	}
 
 
+	void Renderer::InitaliseRenderer() {
+	}
+
 
 	// Destructor
 	Renderer::~Renderer() {
+		// Wait for GPU to finish all operations
+		vkDeviceWaitIdle(RenderDevice->getLogicalDevice());
+
+		// Cleanup synchronization objects
 		for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
 			vkDestroySemaphore(RenderDevice->getLogicalDevice(), renderFinishedSemaphores[i], nullptr);
 			vkDestroySemaphore(RenderDevice->getLogicalDevice(), imageAvailableSemaphores[i], nullptr);
 			vkDestroyFence(RenderDevice->getLogicalDevice(), inFlightFences[i], nullptr);
 		}
 
+		// Cleanup command pool
 		vkDestroyCommandPool(RenderDevice->getLogicalDevice(), commandPool, nullptr);
 
-		// Delte framebuffers
+		// Cleanup framebuffers
 		for (auto framebuffer : swapChainFramebuffers) {
 			vkDestroyFramebuffer(RenderDevice->getLogicalDevice(), framebuffer, nullptr);
 		}
 
-		// In order to keep memory saftey must be in this order
-		delete pipeline;
+		// Cleanup materials (before render pass since they depend on it)
+		for (const auto& pair : materials) {
+			delete(pair.first);
+			delete(pair.second);
+		}
+
+		delete depthBuffer;
+
+		// Cleanup render pass
 		vkDestroyRenderPass(RenderDevice->getLogicalDevice(), renderPass, nullptr);
+
+		// Cleanup swap chain
 		delete swapChain;
+
+		// Cleanup device
 		delete RenderDevice;
+
+		// Cleanup surface
 		vkDestroySurfaceKHR(instance, surface, nullptr);
 
-
-		if (enableValidationLayers) { 
-			DestroyDebugUtilsMessengerEXT(instance, debugMessenger, nullptr); 
+		// Cleanup debug messenger
+		if (enableValidationLayers) {
+			DestroyDebugUtilsMessengerEXT(instance, debugMessenger, nullptr);
 		}
+
+		// Cleanup instance
 		vkDestroyInstance(instance, nullptr);
 	}
 
@@ -371,11 +421,24 @@ namespace Simple3D {
 		colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 		colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
-
+		VkAttachmentDescription depthAttachment{}; 
+		depthAttachment.format = findDepthFormat(RenderDevice); 
+		depthAttachment.samples = VK_SAMPLE_COUNT_1_BIT; 
+		depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR; 
+		depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE; 
+		depthAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE; 
+		depthAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE; 
+		depthAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED; 
+		depthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL; 
 
 		VkAttachmentReference colorAttachmentRef{}; 
 		colorAttachmentRef.attachment = 0; 
 		colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; 
+
+		VkAttachmentReference depthAttachmentRef{};
+		depthAttachmentRef.attachment = 1;
+		depthAttachmentRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
 
 
 
@@ -383,6 +446,7 @@ namespace Simple3D {
 		subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
 		subpass.colorAttachmentCount = 1;
 		subpass.pColorAttachments = &colorAttachmentRef;
+		subpass.pDepthStencilAttachment = &depthAttachmentRef;
 
 
 
@@ -393,17 +457,21 @@ namespace Simple3D {
 		dependency.srcAccessMask = 0; 
 		dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT; 
 		dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+		dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+		dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+		dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 
 
 		// Actual renderpass
+		std::array<VkAttachmentDescription, 2> attachments = { colorAttachment, depthAttachment };
 		VkRenderPassCreateInfo renderPassInfo{};
 		renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-		renderPassInfo.attachmentCount = 1;
-		renderPassInfo.pAttachments = &colorAttachment;
+		renderPassInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
+		renderPassInfo.pAttachments = attachments.data();
 		renderPassInfo.subpassCount = 1;
 		renderPassInfo.pSubpasses = &subpass;
-		renderPassInfo.dependencyCount = 1; 
-		renderPassInfo.pDependencies = &dependency; 
+		renderPassInfo.dependencyCount = 1;
+		renderPassInfo.pDependencies = &dependency;
 
 		if (vkCreateRenderPass(RenderDevice->getLogicalDevice(), &renderPassInfo, nullptr, &renderPass) != VK_SUCCESS) {
 			printf("failed to create render pass!");
@@ -415,15 +483,16 @@ namespace Simple3D {
 		swapChainFramebuffers.resize(swapChain->getImageViews().size());
 
 		for (size_t i = 0; i < swapChain->getImageViews().size(); i++) {
-			VkImageView attachments[] = {
-				swapChain->getImageViews()[i]
+			std::array<VkImageView, 2> attachments = {
+				swapChain->getImageViews()[i],
+				depthBuffer->depthImageView
 			};
 
 			VkFramebufferCreateInfo framebufferInfo{};
 			framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
 			framebufferInfo.renderPass = renderPass;
-			framebufferInfo.attachmentCount = 1;
-			framebufferInfo.pAttachments = attachments;
+			framebufferInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
+			framebufferInfo.pAttachments = attachments.data();
 			framebufferInfo.width = swapChain->GetSwapChainExtent().width;
 			framebufferInfo.height = swapChain->GetSwapChainExtent().height;
 			framebufferInfo.layers = 1;
@@ -508,6 +577,11 @@ namespace Simple3D {
 
 		cleanupSwapChain();
 		swapChain->recreate(width, height);
+
+		delete depthBuffer;
+		depthBuffer = new DepthBuffer(RenderDevice, swapChain, &commandPool);
+
+
 		createFramebuffers();
 	}
 

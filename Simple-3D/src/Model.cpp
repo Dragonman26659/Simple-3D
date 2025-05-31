@@ -3,6 +3,7 @@
 
 
 namespace Simple3D {
+
     Model::Model(std::vector<Vertex> verticies, std::vector<uint16_t> indices)
         : Verticies(verticies), Indices(indices) {
 
@@ -25,8 +26,15 @@ namespace Simple3D {
         BufferEnabled = true;
     }
 
+    void Model::CreateBuffers() {
+        CreateVertexBuffer();
+        CreateIndexBuffer();
+
+        BufferEnabled = true;
+    }
+
     VkBuffer Model::GetVertexBuffer() {
-        return vertexBuffer;
+        return vertexBuffer; 
     }
 
     VkBuffer Model::GetIndexBuffer() {
@@ -39,6 +47,13 @@ namespace Simple3D {
 
         vkDestroyBuffer(r_device->getLogicalDevice(), vertexBuffer, nullptr);
         vkFreeMemory(r_device->getLogicalDevice(), vertexBufferMemory, nullptr);
+
+
+        // Destory textures
+
+
+
+
 
         // Make sure we know buffer is gone and dont keep track of device or command pool anymore
         r_device = nullptr;
@@ -86,8 +101,13 @@ namespace Simple3D {
         vkFreeMemory(r_device->getLogicalDevice(), stagingBufferMemory, nullptr);
     }
 
+    void Model::BindMaterial(Material* newMaterial) {
+        material = newMaterial;
+    }
+
+
     void Model::SetTransform(glm::mat4 n_transform) {
-        transform = n_transform;
+          transform = n_transform;
     }
 
     bool Model::hasBuffer() {
