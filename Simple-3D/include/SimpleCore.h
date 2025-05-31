@@ -3,6 +3,16 @@
 
 
 
+
+
+
+
+
+
+
+// change definition based on if compiling for SDL or not
+//#define SDL_WINDOW
+
 #ifndef DEBUG
 const bool enableValidationLayers = false;
 #else
@@ -13,6 +23,7 @@ const bool enableValidationLayers = true;
 // Changes depending on if we are using SDL2 or not
 #ifdef SDL_WINDOW
 #include "SDL.h"
+#include <SDL_vulkan.h>
 #else
 #ifdef _GLFW_H_ 
 #error "GLFW must not be included before Simple3D"

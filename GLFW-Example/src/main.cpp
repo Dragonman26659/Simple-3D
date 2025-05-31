@@ -1,4 +1,5 @@
 #include "Simple3D.h"
+#include "GLFW/glfw3.h"
 #include <stdio.h>
 
 
@@ -43,10 +44,6 @@ int main() {
 	info.textures.push_back("textures/pop_cat.png");
 
 	myModel->BindMaterial(renderer->CreateMaterial(info));
-
-
-	// initalise renderer
-	renderer->InitaliseRenderer();
 
 
 	// Set Positions

@@ -205,6 +205,7 @@ namespace Simple3D {
 	// Creates a material given a material create struct, Material memory is handled by renderer
 	Material* Renderer::CreateMaterial(MaterialInfo info) {
 		Material* material = new Material(RenderDevice, &commandPool, info.vertexSource, info.FragmentSource, info.textures);
+		material->isLit = info.isLit;
 
 		// Add material to the materials map with a new pipeline
 		materials[material] = new Pipeline(*RenderDevice, renderPass, material);
@@ -244,10 +245,6 @@ namespace Simple3D {
 		std::cerr << "validation layer: " << pCallbackData->pMessage << std::endl;
 
 		return VK_FALSE;
-	}
-
-
-	void Renderer::InitaliseRenderer() {
 	}
 
 

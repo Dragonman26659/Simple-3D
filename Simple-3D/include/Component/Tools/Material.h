@@ -11,7 +11,7 @@ namespace Simple3D {
 		std::string vertexSource;
 		std::string FragmentSource;
 
-
+		bool isLit;
 		std::vector<std::string> textures;
 	};
 
@@ -37,6 +37,10 @@ namespace Simple3D {
 		// Shaders
 		std::string vertexSource;
 		std::string FragmentSource;
+
+		// Do we need to light the texture
+		bool isLit;
+
 
 		// Textures
 		std::unordered_map<std::string, TextureBinding> textures;

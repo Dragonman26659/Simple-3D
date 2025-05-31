@@ -24,7 +24,6 @@ project "Simple-3D"
         "vendor/GLFW/include",
         "vendor/SDL/include",
         "vendor/Vulkan/Include",
-        "vendor/Stb",
         "vendor/glm"
     }
 
@@ -38,7 +37,7 @@ project "Simple-3D"
 
     links {
         "glfw3",
-        "SDL2-staticd",
+        "SDL2",
         "vulkan-1.lib"
     }
     
@@ -76,7 +75,6 @@ project "GLFW-Example"
         "Simple-3D/include",
         "vendor/GLFW/include",
         "vendor/Vulkan/Include",
-        "vendor/Stb",
         "vendor/glm"
     }
 
@@ -125,7 +123,6 @@ project "SDL-Example"
         "Simple-3D/include",
         "vendor/SDL/include",
         "vendor/Vulkan/Include",
-        "vendor/Stb",
         "vendor/glm"
     }
 
@@ -135,7 +132,7 @@ project "SDL-Example"
     }
 
     links {
-        "SDL2-staticd",
+        "SDL2",
         "Simple-3D"
     }
 
