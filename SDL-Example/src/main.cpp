@@ -13,7 +13,7 @@ class FPSCameraController {
 private:
     Simple3D::Camera& camera;
     const float sensitivity = 0.1f;
-    const float moveSpeed = 0.1f;
+    const float moveSpeed = 1.0f;
 
 public:
     glm::vec2 lastMousePos = { 0.0f, 0.0f };
@@ -50,14 +50,14 @@ public:
         if (key_state[SDL_SCANCODE_A]) {
             // Move left perpendicular to facing direction
             float yawRad = glm::radians(rot.y);
-            pos.x -= std::cos(yawRad) * moveSpeed * deltatime;
-            pos.z -= std::sin(yawRad) * moveSpeed * deltatime;
+            pos.x += std::cos(yawRad) * moveSpeed * deltatime;
+            pos.z += std::sin(yawRad) * moveSpeed * deltatime;
         }
         if (key_state[SDL_SCANCODE_D]) {
             // Move right perpendicular to facing direction
             float yawRad = glm::radians(rot.y);
-            pos.x += std::cos(yawRad) * moveSpeed * deltatime;
-            pos.z += std::sin(yawRad) * moveSpeed * deltatime;
+            pos.x -= std::cos(yawRad) * moveSpeed * deltatime;
+            pos.z -= std::sin(yawRad) * moveSpeed * deltatime;
         }
         if (key_state[SDL_SCANCODE_SPACE]) {
             pos.y += moveSpeed * deltatime;
@@ -228,7 +228,7 @@ int main() {
     myModel->SetTransform(glm::rotate(myModel->GetTransform(), glm::radians(-90.0f), glm::vec3(0.0f, 0.0f, 1.0f)));
 
     // Set Positions
-    mainCam->setPosition(glm::vec3(0.0f, 0.0f, 2.0f));
+    mainCam->setPosition(glm::vec3(0.0f, 0.5f, 2.0f));
     mainCam->perspectiveMode = true;
     mainCam->lookAt(glm::vec3(0.0f));
 

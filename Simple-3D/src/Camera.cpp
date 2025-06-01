@@ -20,20 +20,15 @@ namespace Simple3D {
         glm::vec3 rotation(pitch * glm::pi<float>() / 180.0f,
             yaw * glm::pi<float>() / 180.0f,
             roll * glm::pi<float>() / 180.0f);
-        
+
         // Create rotation matrix from Euler angles
         glm::mat4 rotationMatrix =
             glm::rotate(glm::mat4(1.0f), rotation.x, glm::vec3(1, 0, 0)) *
             glm::rotate(glm::mat4(1.0f), rotation.y, glm::vec3(0, 1, 0)) *
             glm::rotate(glm::mat4(1.0f), rotation.z, glm::vec3(0, 0, 1));
-        
-        // Create translation matrix
-        glm::mat4 translation = glm::translate(glm::mat4(1.0f), -position);
-        
-        // Combine rotation and translation
-        return translation * rotationMatrix;
 
-        //return glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        // Combine translation and rotation in correct order
+        return rotationMatrix * glm::translate(glm::mat4(1.0f), position);
     }
 
     glm::mat4 Camera::getProjectionMatrix(float viewportWidth, float viewportHeight) const {
@@ -47,9 +42,6 @@ namespace Simple3D {
                 -orthoHeight / 2, orthoHeight / 2,
                 nearPlane, farPlane);
         }
-
-
-        //return glm::perspective(glm::radians(45.0f), viewportWidth / (float)viewportHeight, 0.1f, 10.0f);
     }
 
     void Camera::lookAt(const glm::vec3& target) {
