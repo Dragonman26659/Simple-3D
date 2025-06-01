@@ -49,39 +49,39 @@ namespace Simple3D {
 		vkResetFences(RenderDevice->getLogicalDevice(), 1, &inFlightFences[currentFrame]);
 
 		// Reset and record command buffer
-		vkResetCommandBuffer(commandBuffers[currentFrame], 0); 
-		recordCommandBuffer(commandBuffers[currentFrame], imageIndex); 
+		vkResetCommandBuffer(commandBuffers[currentFrame], 0);
+		recordCommandBuffer(commandBuffers[currentFrame], imageIndex);
 
 
 		// Submit command buffer
-		VkSubmitInfo submitInfo{}; 
-		
-		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO; 
+		VkSubmitInfo submitInfo{};
+
+		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 
 		VkSemaphore waitSemaphores[] = { imageAvailableSemaphores[currentFrame] };
-		VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT }; 
-		submitInfo.waitSemaphoreCount = 1; 
-		submitInfo.pWaitSemaphores = waitSemaphores; 
-		submitInfo.pWaitDstStageMask = waitStages; 
+		VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
+		submitInfo.waitSemaphoreCount = 1;
+		submitInfo.pWaitSemaphores = waitSemaphores;
+		submitInfo.pWaitDstStageMask = waitStages;
 
-		submitInfo.commandBufferCount = 1; 
+		submitInfo.commandBufferCount = 1;
 		submitInfo.pCommandBuffers = &commandBuffers[currentFrame];
-		 
+
 		VkSemaphore signalSemaphores[] = { renderFinishedSemaphores[currentFrame] };
-		submitInfo.signalSemaphoreCount = 1; 
-		submitInfo.pSignalSemaphores = signalSemaphores; 
+		submitInfo.signalSemaphoreCount = 1;
+		submitInfo.pSignalSemaphores = signalSemaphores;
 
 		if (vkQueueSubmit(RenderDevice->getVKgraphicsQueue(), 1, &submitInfo, inFlightFences[currentFrame]) != VK_SUCCESS) {
 			throw std::runtime_error("failed to submit draw command buffer!");
 		}
 
-		VkPresentInfoKHR presentInfo{}; 
-		presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR; 
+		VkPresentInfoKHR presentInfo{};
+		presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
 
-		presentInfo.waitSemaphoreCount = 1; 
+		presentInfo.waitSemaphoreCount = 1;
 		presentInfo.pWaitSemaphores = signalSemaphores;
 
-		VkSwapchainKHR swapChains[] = { swapChain->GetVKSwapchain()};
+		VkSwapchainKHR swapChains[] = { swapChain->GetVKSwapchain() };
 		presentInfo.swapchainCount = 1;
 		presentInfo.pSwapchains = swapChains;
 		presentInfo.pImageIndices = &imageIndex;
@@ -106,23 +106,20 @@ namespace Simple3D {
 	}
 
 
-
-
-	// Command buffer recording
 	void Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex) {
 		std::array<VkClearValue, 2> clearValues{};
 		clearValues[0].color = { {0.0f, 0.0f, 0.0f, 1.0f} };
 		clearValues[1].depthStencil = { 1.0f, 0 };
 
 		// Begin to record
-		VkCommandBufferBeginInfo beginInfo{}; 
-		beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO; 
+		VkCommandBufferBeginInfo beginInfo{};
+		beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 		beginInfo.flags = 0; // Optional 
 		beginInfo.pInheritanceInfo = nullptr; // Optional 
 
-		if (vkBeginCommandBuffer(commandBuffer, &beginInfo) != VK_SUCCESS) { 
+		if (vkBeginCommandBuffer(commandBuffer, &beginInfo) != VK_SUCCESS) {
 			printf("failed to begin recording command buffer!");
-			throw std::runtime_error("failed to begin recording command buffer!"); 
+			throw std::runtime_error("failed to begin recording command buffer!");
 		}
 
 
@@ -140,59 +137,65 @@ namespace Simple3D {
 		// Begin render pass
 		vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-			// Draw Models
-			for (Model* model : ModelsThisFrame) {
-				if (!model->hasBuffer()) {
-					model->CreateBuffers(RenderDevice, &commandPool);
-				}
-
-				// Bind pipeline for render pass
-				auto pipeline = materials[model->material];
-				vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->GetPipeline());
-
-
-
-				// Define viewport
-				VkViewport viewport{};
-				viewport.x = 0.0f;
-				viewport.y = 0.0f;
-				viewport.width = static_cast<float>(swapChain->GetSwapChainExtent().width);
-				viewport.height = static_cast<float>(swapChain->GetSwapChainExtent().height);
-				viewport.minDepth = 0.0f;
-				viewport.maxDepth = 1.0f;
-				vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
-
-				// Define sissor
-				VkRect2D scissor{};
-				scissor.offset = { 0, 0 };
-				scissor.extent = swapChain->GetSwapChainExtent();
-				vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
-
-				// UPdate with models position and shizzle
-				pipeline->updateUniformBuffer(currentFrame, mainCamera->getProjectionMatrix(GetWindowWidth(), GetWindowHeight()), mainCamera->getViewMatrix(), model->GetTransform());
-				pipeline->updateLights(currentFrame, LightsThisFrame);
-
-				VkBuffer vertexBuffers[] = { model->GetVertexBuffer() };
-				VkDeviceSize offsets[] = { 0 };
-				vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
-				vkCmdBindIndexBuffer(commandBuffer, model->GetIndexBuffer(), 0, VK_INDEX_TYPE_UINT32);
-
-				uint32_t dynamicOffset = 0;
-				vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->GetLayout(), 0, 1, &pipeline->descriptorSets[currentFrame], 1, &dynamicOffset);
-
-				vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(model->Indices.size()), 1, 0, 0, 0);
+		// Draw Models
+		for (Model* model : ModelsThisFrame) {
+			if (!model->hasBuffer()) {
+				model->CreateBuffers(RenderDevice, &commandPool);
 			}
 
+			// Bind pipeline for render pass
+			auto pipeline = materials[model->material];
+			vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->GetPipeline());
+
+
+
+			// Define viewport
+			VkViewport viewport{};
+			viewport.x = 0.0f;
+			viewport.y = 0.0f;
+			viewport.width = static_cast<float>(swapChain->GetSwapChainExtent().width);
+			viewport.height = static_cast<float>(swapChain->GetSwapChainExtent().height);
+			viewport.minDepth = 0.0f;
+			viewport.maxDepth = 1.0f;
+			vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+
+			// Define sissor
+			VkRect2D scissor{};
+			scissor.offset = { 0, 0 };
+			scissor.extent = swapChain->GetSwapChainExtent();
+			vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+
+			// UPdate with models position and shizzle
+			pipeline->updateUniformBuffer(currentFrame, mainCamera->getProjectionMatrix(GetWindowWidth(), GetWindowHeight()), mainCamera->getViewMatrix(), model->GetTransform());
+			pipeline->updateLights(currentFrame, LightsThisFrame);
+
+			VkBuffer vertexBuffers[] = { model->GetVertexBuffer() };
+			VkDeviceSize offsets[] = { 0 };
+			vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
+			vkCmdBindIndexBuffer(commandBuffer, model->GetIndexBuffer(), 0, VK_INDEX_TYPE_UINT32);
+
+			uint32_t dynamicOffset = 0;
+			vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->GetLayout(), 0, 1, &pipeline->descriptorSets[currentFrame], 1, &dynamicOffset);
+
+			vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(model->Indices.size()), 1, 0, 0, 0);
+		}
+
+#ifdef USEIMGUI
+		drawImgui(commandBuffer);
+#endif // USEIMGUI
 
 
 		// End render pass
-		vkCmdEndRenderPass(commandBuffer); 
+		vkCmdEndRenderPass(commandBuffer);
 
-		if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) { 
+		if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
 			printf("failed to record command buffer!");
 			throw std::runtime_error("failed to record command buffer!");
 		}
 	}
+
+
+
 
 	void Renderer::SumbitModelToFrame(Model* model) {
 		ModelsThisFrame.push_back(model);
@@ -210,8 +213,7 @@ namespace Simple3D {
 
 	// Creates a material given a material create struct, Material memory is handled by renderer
 	Material* Renderer::CreateMaterial(MaterialInfo info) {
-		Material* material = new Material(RenderDevice, &commandPool, info.vertexSource, info.FragmentSource, info.textures);
-		material->isLit = info.isLit;
+		Material* material = new Material(RenderDevice, &commandPool, info.vertexSource, info.FragmentSource, info.textures, info.isLit);
 
 		// Add material to the materials map with a new pipeline
 		materials[material] = new Pipeline(*RenderDevice, renderPass, material);
@@ -276,8 +278,8 @@ namespace Simple3D {
 
 		// Cleanup materials (before render pass since they depend on it)
 		for (const auto& pair : materials) {
-			delete(pair.first);
 			delete(pair.second);
+			delete(pair.first);
 		}
 
 		delete depthBuffer;
@@ -560,15 +562,6 @@ namespace Simple3D {
 		}
 	}
 
-
-	void Renderer::cleanupSwapChain() {
-		for (size_t i = 0; i < swapChainFramebuffers.size(); i++) {
-			vkDestroyFramebuffer(RenderDevice->getLogicalDevice(), swapChainFramebuffers[i], nullptr);
-		}
-
-		swapChain->cleanup();
-	}
-
 	void Renderer::RecreateSwapChain() {
 		// Wait until device can be changed
 		vkDeviceWaitIdle(RenderDevice->getLogicalDevice());
@@ -586,6 +579,15 @@ namespace Simple3D {
 
 
 		createFramebuffers();
+	}
+
+
+	void Renderer::cleanupSwapChain() {
+		for (size_t i = 0; i < swapChainFramebuffers.size(); i++) {
+			vkDestroyFramebuffer(RenderDevice->getLogicalDevice(), swapChainFramebuffers[i], nullptr);
+		}
+
+		swapChain->cleanup();
 	}
 
 	void Renderer::WaitToFinish() {

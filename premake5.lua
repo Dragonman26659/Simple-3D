@@ -2,6 +2,18 @@
 workspace "Simple 3D"
     configurations { "Debug", "Release"}
 
+    newoption {
+        trigger = "use-sdl",
+        description = "Use SDL instead of GLFW",
+        default = "off"
+    }
+
+    newoption {
+        trigger = "use-imgui",
+        description = "Enable ImGui support",
+        default = "off"
+    }
+
 project "Simple-3D"
     location '%{prj.name}'
     kind "StaticLib"
@@ -24,7 +36,8 @@ project "Simple-3D"
         "vendor/GLFW/include",
         "vendor/SDL/include",
         "vendor/Vulkan/Include",
-        "vendor/glm"
+        "vendor/glm",
+        "vendor/ImGui"
     }
 
 
@@ -53,6 +66,13 @@ project "Simple-3D"
         cppdialect "C++17"
         systemversion "latest"
         architecture "x64"
+
+    -- Add feature-specific defines
+    filter { "options:use-sdl" }
+        defines { "SDL_WINDOW" }
+
+    filter { "options:use-imgui" }
+        defines { "USEIMGUI" }
 
 project "GLFW-Example"
     location '%{prj.name}'

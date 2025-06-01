@@ -2,17 +2,7 @@
 // ONLY THINGS THAT ARE NEEDED FOR EVERY FILE
 
 
-
-
-
-
-
-
-
-
 // change definition based on if compiling for SDL or not
-#define SDL_WINDOW
-
 #ifndef DEBUG
 const bool enableValidationLayers = false;
 #else
@@ -32,6 +22,21 @@ const bool enableValidationLayers = true;
 #define GLFW_INCLUDE_VULKAN
 #include "GLFW/glfw3.h"
 #endif
+
+#ifdef USEIMGUI
+#include "imgui.h"
+#include "backends/imgui_impl_vulkan.h"
+
+#ifdef SDL_WINDOW
+#include "backends/imgui_impl_sdl2.h"
+#else
+#include "backends/imgui_impl_glfw.h"
+#endif
+
+#endif // USEIMGUI
+
+
+
 
 #define GLM_FORCE_DEFAULT_ALIGNED_GENTYPES
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE

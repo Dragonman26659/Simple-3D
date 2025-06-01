@@ -279,8 +279,8 @@ int main() {
 
     delete myModel;
     delete mainCam;
-    delete renderer;
     delete myLight;
+    delete renderer;
 
     SDL_DestroyWindow(window);
     SDL_Quit();

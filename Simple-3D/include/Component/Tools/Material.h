@@ -23,7 +23,7 @@ namespace Simple3D {
 	*/
 	class Material {
 	public:
-		Material(Device* r_device, VkCommandPool* commandPool, std::string vertexSource, std::string FragmentSource, std::vector<std::string> textureNames);
+		Material(Device* r_device, VkCommandPool* commandPool, std::string vertexSource, std::string FragmentSource, std::vector<std::string> textureNames, bool isLit);
 		~Material();
 
 

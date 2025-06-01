@@ -18,6 +18,23 @@
 
 
 namespace Simple3D {
+
+#ifdef USEIMGUI
+	struct ImGuiInitInfo {
+		VkInstance instance;
+		VkPhysicalDevice physicalDevice;
+		VkDevice device;
+		uint32_t queueFamily;
+		VkQueue graphicsQueue;
+		VkDescriptorPool descriptorPool;
+		uint32_t minImageCount;
+	};
+#endif
+
+
+
+
+
 	class Renderer {
 	public:
 // Changes based on if you use SDL or GLFW for windowing
@@ -168,12 +185,80 @@ namespace Simple3D {
 
 		void Render();
 		void WaitToFinish();
+
+
+		// In header due to links with preprossessor
 		void RecreateSwapChain();
 
 		Material* CreateMaterial(MaterialInfo info);
 		void SumbitModelToFrame(Model* model);
 		void SubmitMainCamera(Camera* cam);
 		void SubmitLightToFrame(Light& light);
+
+
+#ifdef USEIMGUI
+		// Returns all needed information to be able to use Imgui
+		ImGuiInitInfo Renderer::GetImGUIinfo() {
+			ImGuiInitInfo info;
+
+
+			// Create separate pool for ImGui
+			VkDescriptorPoolSize pool_sizes[] = {
+				{ VK_DESCRIPTOR_TYPE_SAMPLER, 1000 },
+				{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000 }
+			};
+
+			VkDescriptorPoolCreateInfo pool_info = {};
+			pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+			pool_info.maxSets = 1000;
+			pool_info.poolSizeCount = std::size(pool_sizes);
+			pool_info.pPoolSizes = pool_sizes;
+			pool_info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+
+			vkCreateDescriptorPool(RenderDevice->getLogicalDevice(), &pool_info, nullptr, &imguiPool);
+
+			info.instance = instance;
+			info.device = RenderDevice->getLogicalDevice();
+			info.physicalDevice = RenderDevice->getPhysicalDevice();
+			info.graphicsQueue = RenderDevice->getVKgraphicsQueue();
+			info.queueFamily = RenderDevice->findQueueFamilies().graphicsFamily.value();
+			info.descriptorPool = imguiPool;
+			info.minImageCount = swapChain->getImageViews().size();
+
+
+
+			return info;
+		}
+
+
+
+		void drawImgui(VkCommandBuffer cmd) {
+			// Begin new frame
+			ImGui_ImplVulkan_NewFrame();
+#ifdef SDL_WINDOW
+			ImGui_ImplSDL2_NewFrame();
+#else
+			ImGui_ImplGlfw_NewFrame();
+#endif // SDL_WINDOW
+
+			ImGui::NewFrame();
+
+			// Your UI code here
+			ImGui::ShowDemoWindow();
+
+			// Render
+			ImGui::Render();
+
+			VkRenderingInfo renderInfo = {};
+			renderInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+			renderInfo.renderArea.extent = swapChain->GetSwapChainExtent();
+			renderInfo.colorAttachmentCount = 1;
+
+			vkCmdBeginRendering(cmd, &renderInfo);
+			ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
+			vkCmdEndRendering(cmd);
+		}
+#endif // USEIMGUI
 
 	private:
 		// Vulkan Instance
@@ -231,6 +316,12 @@ namespace Simple3D {
 		std::vector<Model*> ModelsThisFrame;
 		std::vector<Light> LightsThisFrame;
 
+
+#ifdef USEIMGUI
+		// DescriptorPool for Imgui
+		VkDescriptorPool imguiPool;
+#endif //USEIMGUI
+
 		// Create instance
 		void CreateInstance(std::string EngineName, std::string ApplicationName);
 
@@ -238,6 +329,10 @@ namespace Simple3D {
 		// Create command pool and command buffer
 		void createCommandPool();
 		void createCommandBuffer();
+
+
+
+		// Command buffer recording -- In header due to references to preprossessor
 		void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex);
 
 

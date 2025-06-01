@@ -6,9 +6,9 @@ namespace Simple3D {
 
     Material::Material(Device* device, VkCommandPool* commandPool,
         std::string vertex, std::string Fragment,
-        std::vector<std::string> textureNames)
+        std::vector<std::string> textureNames, bool isLit)
         : r_device(device), r_commandPool(commandPool)
-        , vertexSource(vertex), FragmentSource(Fragment)
+        , vertexSource(vertex), FragmentSource(Fragment), isLit(isLit)
     {
         // Create a TextureBinding for each texture name
         for (const auto& name : textureNames) {

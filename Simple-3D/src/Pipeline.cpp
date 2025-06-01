@@ -21,12 +21,14 @@ namespace Simple3D {
         }
 
         // Clean up light buffers
-        for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-            if (lightBuffers[i] != VK_NULL_HANDLE) {
-                vkDestroyBuffer(s_Device.getLogicalDevice(), lightBuffers[i], nullptr);
-            }
-            if (lightBuffersMemory[i] != VK_NULL_HANDLE) {
-                vkFreeMemory(s_Device.getLogicalDevice(), lightBuffersMemory[i], nullptr);
+        if (material->isLit) {
+            for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+                if (lightBuffers[i] != VK_NULL_HANDLE) {
+                    vkDestroyBuffer(s_Device.getLogicalDevice(), lightBuffers[i], nullptr);
+                }
+                if (lightBuffersMemory[i] != VK_NULL_HANDLE) {
+                    vkFreeMemory(s_Device.getLogicalDevice(), lightBuffersMemory[i], nullptr);
+                }
             }
         }
 
