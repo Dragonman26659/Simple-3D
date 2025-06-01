@@ -11,7 +11,7 @@
 
 
 // change definition based on if compiling for SDL or not
-//#define SDL_WINDOW
+#define SDL_WINDOW
 
 #ifndef DEBUG
 const bool enableValidationLayers = false;
@@ -35,11 +35,13 @@ const bool enableValidationLayers = true;
 
 #define GLM_FORCE_DEFAULT_ALIGNED_GENTYPES
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
+#define GLM_ENABLE_EXPERIMENTAL
 
 // 3rd party libs
 #include "vulkan/vulkan.h"
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtx/hash.hpp>
 
 
 // Standard
@@ -95,7 +97,23 @@ struct Vertex {
 
         return attributeDescriptions;
     }
+
+    bool operator==(const Vertex& other) const {
+        return pos == other.pos && color == other.color && texCoord == other.texCoord;
+    }
 };
+
+
+namespace std {
+    template<> struct hash<Vertex> {
+        size_t operator()(Vertex const& vertex) const {
+            return ((hash<glm::vec3>()(vertex.pos) ^
+                (hash<glm::vec3>()(vertex.color) << 1)) >> 1) ^
+                (hash<glm::vec2>()(vertex.texCoord) << 1);
+        }
+    };
+}
+
 
 // Transform Object
 struct UniformBufferObject {
@@ -104,27 +122,6 @@ struct UniformBufferObject {
     glm::mat4 proj;
 };
 
-
-
-// TEMP
-// Test for now (will replace with model class later on)
-const std::vector<Vertex> TriangleVertices = {
-    {{-0.5f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},
-    {{0.5f, -0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}},
-    {{0.5f, 0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}},
-    {{-0.5f, 0.5f, 0.0f}, {1.0f, 1.0f, 1.0f}, {0.0f, 1.0f}},
-
-    {{-0.5f, -0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},
-    {{0.5f, -0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}},
-    {{0.5f, 0.5f, -0.5f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}},
-    {{-0.5f, 0.5f, -0.5f}, {1.0f, 1.0f, 1.0f}, {0.0f, 1.0f}}
-};
-
-const std::vector<uint16_t> TriangleIndices = {
-    0, 1, 2, 2, 3, 0,
-    4, 5, 6, 6, 7, 4
-};
-// /Temp
 
 const std::vector<const char*> validationLayers = {
     "VK_LAYER_KHRONOS_validation"

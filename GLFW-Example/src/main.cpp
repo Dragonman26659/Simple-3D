@@ -3,7 +3,23 @@
 #include <stdio.h>
 
 
+// Test for now (will replace with model loading)
+const std::vector<Vertex> TriangleVertices = {
+	{{-0.5f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},
+	{{0.5f, -0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}},
+	{{0.5f, 0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}},
+	{{-0.5f, 0.5f, 0.0f}, {1.0f, 1.0f, 1.0f}, {0.0f, 1.0f}},
 
+	{{-0.5f, -0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},
+	{{0.5f, -0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}},
+	{{0.5f, 0.5f, -0.5f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}},
+	{{-0.5f, 0.5f, -0.5f}, {1.0f, 1.0f, 1.0f}, {0.0f, 1.0f}}
+};
+
+const std::vector<uint16_t> TriangleIndices = {
+	0, 1, 2, 2, 3, 0,
+	4, 5, 6, 6, 7, 4
+};
 
 
 void error_callback(int error, const char* description)
@@ -41,7 +57,7 @@ int main() {
 	Simple3D::MaterialInfo info;
 	info.FragmentSource = "shaders/frag.spv";
 	info.vertexSource = "shaders/vert.spv";
-	info.textures.push_back("textures/pop_cat.png");
+	info.textures.push_back("textures/albeado_viking_room.png");
 
 	myModel->BindMaterial(renderer->CreateMaterial(info));
 

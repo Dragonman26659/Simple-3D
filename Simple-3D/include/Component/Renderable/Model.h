@@ -17,7 +17,7 @@ namespace Simple3D {
 
     class Model {
     public:
-        Model(std::vector<Vertex> verticies, std::vector<uint16_t> indices);
+        Model(std::vector<Vertex> verticies, std::vector<uint32_t> indices);
         ~Model();
 
         // Needed to be used by renderer but dont fuck w it if ur not renderer
@@ -38,7 +38,7 @@ namespace Simple3D {
         glm::mat4 GetTransform();
 
         std::vector<Vertex> Verticies;
-        std::vector<uint16_t> Indices;
+        std::vector<uint32_t> Indices;
 
 
         // Set for shaders and textures

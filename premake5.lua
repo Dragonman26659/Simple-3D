@@ -75,6 +75,7 @@ project "GLFW-Example"
         "Simple-3D/include",
         "vendor/GLFW/include",
         "vendor/Vulkan/Include",
+        "vendor/TinyObjLoader/Include",
         "vendor/glm"
     }
 
@@ -123,6 +124,7 @@ project "SDL-Example"
         "Simple-3D/include",
         "vendor/SDL/include",
         "vendor/Vulkan/Include",
+        "vendor/TinyObjLoader/Include",
         "vendor/glm"
     }
 

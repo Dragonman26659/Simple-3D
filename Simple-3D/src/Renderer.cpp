@@ -173,12 +173,11 @@ namespace Simple3D {
 				VkDeviceSize offsets[] = { 0 };
 				vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
 
-				vkCmdBindIndexBuffer(commandBuffer, model->GetIndexBuffer(), 0, VK_INDEX_TYPE_UINT16);
+				vkCmdBindIndexBuffer(commandBuffer, model->GetIndexBuffer(), 0, VK_INDEX_TYPE_UINT32);
 
 				vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->GetLayout(), 0, 1, &pipeline->descriptorSets[currentFrame], 0, nullptr);
 
 				vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(model->Indices.size()), 1, 0, 0, 0);
-
 			}
 
 

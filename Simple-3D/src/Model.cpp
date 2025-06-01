@@ -4,7 +4,7 @@
 
 namespace Simple3D {
 
-    Model::Model(std::vector<Vertex> verticies, std::vector<uint16_t> indices)
+    Model::Model(std::vector<Vertex> verticies, std::vector<uint32_t> indices)
         : Verticies(verticies), Indices(indices) {
 
     }
@@ -47,9 +47,6 @@ namespace Simple3D {
 
         vkDestroyBuffer(r_device->getLogicalDevice(), vertexBuffer, nullptr);
         vkFreeMemory(r_device->getLogicalDevice(), vertexBufferMemory, nullptr);
-
-
-        // Destory textures
 
 
 
