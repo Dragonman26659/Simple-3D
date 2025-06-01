@@ -12,12 +12,13 @@
 class FPSCameraController {
 private:
     Simple3D::Camera& camera;
-    bool mouseLocked = false;
-    glm::vec2 lastMousePos = { 0.0f, 0.0f };
     const float sensitivity = 0.1f;
     const float moveSpeed = 0.1f;
 
 public:
+    glm::vec2 lastMousePos = { 0.0f, 0.0f };
+    bool mouseLocked = false;
+
     FPSCameraController(Simple3D::Camera& cam) : camera(cam) {}
 
     void handleInput(float deltatime) {
@@ -92,12 +93,10 @@ public:
             rot.x += pitch;
 
             // Clamp pitch to prevent flipping
-            //rot.y = glm::clamp(rot.y, -89.0f, 89.0f);
+            rot.x = glm::clamp(rot.x, -89.0f, 89.0f);
 
             // Update rotation
             camera.setRotation(rot.x, rot.y, 0.0f);
-
-            lastMousePos = currentMousePos;
         }
 
         if (event.type == SDL_MOUSEBUTTONDOWN && event.button.button == SDL_BUTTON_RIGHT) {
@@ -117,30 +116,42 @@ public:
 Simple3D::Model* loadModel(std::string MODEL_PATH) {
     std::vector<Vertex> vertices;
     std::vector<uint32_t> indices;
-    std::unordered_map<Vertex, uint32_t> uniqueVertices{};
-
+    std::unordered_map<Vertex, uint32_t> uniqueVertices;
 
     tinyobj::attrib_t attrib;
     std::vector<tinyobj::shape_t> shapes;
     std::vector<tinyobj::material_t> materials;
     std::string err;
 
-
     if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &err, MODEL_PATH.c_str())) {
         throw std::runtime_error(err);
     }
-
 
     for (const auto& shape : shapes) {
         for (const auto& index : shape.mesh.indices) {
             Vertex vertex{};
 
+            // Position (unchanged)
             vertex.pos = {
                 attrib.vertices[3 * index.vertex_index + 0],
                 attrib.vertices[3 * index.vertex_index + 1],
                 attrib.vertices[3 * index.vertex_index + 2]
             };
 
+            // Normal (new)
+            if (index.normal_index >= 0) {
+                vertex.normal = {
+                    attrib.normals[3 * index.normal_index + 0],
+                    attrib.normals[3 * index.normal_index + 1],
+                    attrib.normals[3 * index.normal_index + 2]
+                };
+            }
+            else {
+                // Handle missing normals
+                vertex.normal = glm::vec3(0.0f, 0.0f, 1.0f); // Default upward-facing normal
+            }
+
+            // Texture coordinates (unchanged)
             vertex.texCoord = {
                 attrib.texcoords[2 * index.texcoord_index + 0],
                 1.0f - attrib.texcoords[2 * index.texcoord_index + 1]
@@ -157,9 +168,9 @@ Simple3D::Model* loadModel(std::string MODEL_PATH) {
         }
     }
 
-
     return new Simple3D::Model(vertices, indices);
 }
+
 
 void error_callback(const char* description) {
     fprintf(stderr, "Error: %s\n", description);
@@ -190,6 +201,12 @@ int main() {
     // Create Objects
     Simple3D::Renderer* renderer = new Simple3D::Renderer(window, "No engine", "SDL Example");
     Simple3D::Model* myModel = loadModel("Viking_room.obj");
+    Simple3D::Light* myLight = new Simple3D::Light;
+    myLight->type = Simple3D::directional;
+    myLight->castShadows = false;
+    myLight->diffuseColor = glm::vec3(1.0f, 1.0f, 1.0f);
+    myLight->ambientColor = glm::vec3(1.0f, 1.0f, 1.0f);
+    myLight->position = glm::vec3(0.0f, 0.0f, 2.0f);
 
 
 
@@ -239,12 +256,21 @@ int main() {
         }
 
         renderer->SumbitModelToFrame(myModel);
+        renderer->SubmitLightToFrame(*myLight);
         renderer->Render();
 
         lastFrameTime = currentTime;
         float frameTime = SDL_GetTicks() / 1000.0f - currentTime;
         if (frameTime < targetFrameTime) {
             SDL_Delay((targetFrameTime - frameTime) * 1000.0f);
+        }
+
+
+        if (cameraController.mouseLocked) {
+            int height, width;
+            SDL_GetWindowSize(window, &width, &height);
+            SDL_WarpMouseInWindow(window, width / 2, height / 2);
+            cameraController.lastMousePos = glm::vec2(width / 2, height / 2);
         }
     }
 
@@ -254,6 +280,7 @@ int main() {
     delete myModel;
     delete mainCam;
     delete renderer;
+    delete myLight;
 
     SDL_DestroyWindow(window);
     SDL_Quit();

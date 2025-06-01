@@ -14,6 +14,7 @@
 // Components
 #include "Component/Renderable/Model.h"
 #include "Component/Tools/Camera.h"
+#include "Component/Tools/Lights.h"
 
 
 namespace Simple3D {
@@ -172,6 +173,7 @@ namespace Simple3D {
 		Material* CreateMaterial(MaterialInfo info);
 		void SumbitModelToFrame(Model* model);
 		void SubmitMainCamera(Camera* cam);
+		void SubmitLightToFrame(Light& light);
 
 	private:
 		// Vulkan Instance
@@ -225,8 +227,9 @@ namespace Simple3D {
 		// Store the current frame we are on
 		uint32_t currentFrame = 0;
 
-		// Models
+		// Models and lights
 		std::vector<Model*> ModelsThisFrame;
+		std::vector<Light> LightsThisFrame;
 
 		// Create instance
 		void CreateInstance(std::string EngineName, std::string ApplicationName);

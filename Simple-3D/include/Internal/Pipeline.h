@@ -5,6 +5,7 @@
 #include "Tools.h"
 
 #include "Component/Tools/Material.h"
+#include "Component/Tools/Lights.h"
 
 namespace Simple3D {
 
@@ -23,6 +24,7 @@ namespace Simple3D {
 		VkPipeline			GetPipeline();
 		VkPipelineLayout	GetLayout();
 		void				updateUniformBuffer(uint32_t currentImage, glm::mat4 PerspectiveMatrix, glm::mat4 ViewMatrix, glm::mat4 transform);
+		void				updateLights(uint32_t currentImage, const std::vector<Light>& lights);
 
 
 		// Make discriptor sets public cuz fuck getters
@@ -50,6 +52,12 @@ namespace Simple3D {
 		std::vector<VkDeviceMemory> uniformBuffersMemory;
 		std::vector<void*> uniformBuffersMapped;
 
+		// Lights
+		std::vector<VkBuffer> lightBuffers;
+		std::vector<VkDeviceMemory> lightBuffersMemory;
+		std::vector<void*> lightBuffersMapped;
+		std::vector<VkDeviceSize> lightBuffersSize;
+
 
 
 
@@ -60,6 +68,9 @@ namespace Simple3D {
 
 		// Uniform Buffers & samplers
 		void			createUniformBuffers();
+		void			createLightBuffers();
+
+
 		void			createDescriptorSetLayout();
 		void			createDescriptorPool();
 		void			createDescriptorSets();

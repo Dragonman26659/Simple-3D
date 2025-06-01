@@ -22,8 +22,9 @@ namespace Simple3D {
 
 		// Dont render if minimised
 		if (isMinimised()) {
-			// Reset the vector of models to prevent memory leak
+			// Reset the vectors of models and lights to prevent memory leak
 			ModelsThisFrame.clear();
+			LightsThisFrame.clear();
 			return;
 		}
 
@@ -99,8 +100,9 @@ namespace Simple3D {
 		currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 
 
-		// Reset the vector of models
+		// Reset the vectors for Models and lights
 		ModelsThisFrame.clear();
+		LightsThisFrame.clear();
 	}
 
 
@@ -168,14 +170,15 @@ namespace Simple3D {
 
 				// UPdate with models position and shizzle
 				pipeline->updateUniformBuffer(currentFrame, mainCamera->getProjectionMatrix(GetWindowWidth(), GetWindowHeight()), mainCamera->getViewMatrix(), model->GetTransform());
+				pipeline->updateLights(currentFrame, LightsThisFrame);
 
 				VkBuffer vertexBuffers[] = { model->GetVertexBuffer() };
 				VkDeviceSize offsets[] = { 0 };
 				vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
-
 				vkCmdBindIndexBuffer(commandBuffer, model->GetIndexBuffer(), 0, VK_INDEX_TYPE_UINT32);
 
-				vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->GetLayout(), 0, 1, &pipeline->descriptorSets[currentFrame], 0, nullptr);
+				uint32_t dynamicOffset = 0;
+				vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->GetLayout(), 0, 1, &pipeline->descriptorSets[currentFrame], 1, &dynamicOffset);
 
 				vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(model->Indices.size()), 1, 0, 0, 0);
 			}
@@ -193,6 +196,10 @@ namespace Simple3D {
 
 	void Renderer::SumbitModelToFrame(Model* model) {
 		ModelsThisFrame.push_back(model);
+	}
+
+	void Renderer::SubmitLightToFrame(Light& light) {
+		LightsThisFrame.push_back(light);
 	}
 
 	void Renderer::SubmitMainCamera(Camera* cam) {
