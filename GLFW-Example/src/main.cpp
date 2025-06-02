@@ -1,3 +1,5 @@
+#ifndef SDL_WINDOW
+
 #include "Simple3D.h"
 #include "GLFW/glfw3.h"
 #include <stdio.h>
@@ -94,3 +96,5 @@ int main() {
 
 	return 0;
 }
+
+#endif

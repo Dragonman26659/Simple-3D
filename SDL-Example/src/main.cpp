@@ -1,10 +1,19 @@
-#define SDL_WINDOW
+#ifdef SDL_WINDOW
 #define TINYOBJLOADER_IMPLEMENTATION
 
 #include "Simple3D.h"
 #include <tiny_obj_loader.h>
 #include <SDL.h>
 #include <stdio.h>
+
+#ifdef USEIMGUI
+#include "imgui.h"
+
+// Backend implementations
+#include "backends/imgui_impl_vulkan.cpp"
+#include "backends/imgui_impl_sdl2.cpp"
+#endif // USEIMGUI
+
 
 
 #define main main
@@ -202,6 +211,14 @@ int main() {
     Simple3D::Renderer* renderer = new Simple3D::Renderer(window, "No engine", "SDL Example");
     Simple3D::Model* myModel = loadModel("Viking_room.obj");
     Simple3D::Light* myLight = new Simple3D::Light;
+
+    Simple3D::RenderInstance* mainInstance = renderer->CreateRenderInstance();    
+    //Simple3D::RenderInstance* imguiWinInstance = renderer->CreateRenderInstance(true);
+
+
+    renderer->initImgui();
+
+
     myLight->type = Simple3D::directional;
     myLight->castShadows = false;
     myLight->diffuseColor = glm::vec3(1.0f, 1.0f, 1.0f);
@@ -232,7 +249,8 @@ int main() {
     mainCam->perspectiveMode = true;
     mainCam->lookAt(glm::vec3(0.0f));
 
-    renderer->SubmitMainCamera(mainCam);
+    renderer->SubmitMainCamera(mainCam, mainInstance);
+    //renderer->SubmitMainCamera(mainCam, imguiWinInstance);
 
     // Main loop
     bool running = true;
@@ -255,8 +273,19 @@ int main() {
             cameraController.handleEvent(event, deltaTime);
         }
 
-        renderer->SumbitModelToFrame(myModel);
-        renderer->SubmitLightToFrame(*myLight);
+
+        renderer->NewImguiframe();
+
+
+        ImGui::ShowDemoWindow();
+
+
+
+
+        renderer->SumbitModelToFrame(myModel, mainInstance);
+        //renderer->SumbitModelToFrame(myModel, imguiWinInstance);
+        renderer->SubmitLightToFrame(*myLight, mainInstance);
+        //renderer->SubmitLightToFrame(*myLight, imguiWinInstance);
         renderer->Render();
 
         lastFrameTime = currentTime;
@@ -287,3 +316,5 @@ int main() {
 
     return 0;
 }
+
+#endif

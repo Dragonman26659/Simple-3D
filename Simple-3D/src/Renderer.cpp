@@ -23,8 +23,9 @@ namespace Simple3D {
 		// Dont render if minimised
 		if (isMinimised()) {
 			// Reset the vectors of models and lights to prevent memory leak
-			ModelsThisFrame.clear();
-			LightsThisFrame.clear();
+			for (RenderInstance* instance : RenderInstances) {
+				instance->ClearVectors();
+			}
 			return;
 		}
 
@@ -50,6 +51,8 @@ namespace Simple3D {
 
 		// Reset and record command buffer
 		vkResetCommandBuffer(commandBuffers[currentFrame], 0);
+
+
 		recordCommandBuffer(commandBuffers[currentFrame], imageIndex);
 
 
@@ -101,8 +104,9 @@ namespace Simple3D {
 
 
 		// Reset the vectors for Models and lights
-		ModelsThisFrame.clear();
-		LightsThisFrame.clear();
+		for (RenderInstance* instance : RenderInstances) {
+			instance->ClearVectors();
+		}
 	}
 
 
@@ -134,59 +138,23 @@ namespace Simple3D {
 		renderPassInfo.pClearValues = clearValues.data();
 
 
-		// Begin render pass
-		vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
-
-		// Draw Models
-		for (Model* model : ModelsThisFrame) {
-			if (!model->hasBuffer()) {
-				model->CreateBuffers(RenderDevice, &commandPool);
-			}
-
-			// Bind pipeline for render pass
-			auto pipeline = materials[model->material];
-			vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->GetPipeline());
-
-
-
-			// Define viewport
-			VkViewport viewport{};
-			viewport.x = 0.0f;
-			viewport.y = 0.0f;
-			viewport.width = static_cast<float>(swapChain->GetSwapChainExtent().width);
-			viewport.height = static_cast<float>(swapChain->GetSwapChainExtent().height);
-			viewport.minDepth = 0.0f;
-			viewport.maxDepth = 1.0f;
-			vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
-
-			// Define sissor
-			VkRect2D scissor{};
-			scissor.offset = { 0, 0 };
-			scissor.extent = swapChain->GetSwapChainExtent();
-			vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
-
-			// UPdate with models position and shizzle
-			pipeline->updateUniformBuffer(currentFrame, mainCamera->getProjectionMatrix(GetWindowWidth(), GetWindowHeight()), mainCamera->getViewMatrix(), model->GetTransform());
-			pipeline->updateLights(currentFrame, LightsThisFrame);
-
-			VkBuffer vertexBuffers[] = { model->GetVertexBuffer() };
-			VkDeviceSize offsets[] = { 0 };
-			vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
-			vkCmdBindIndexBuffer(commandBuffer, model->GetIndexBuffer(), 0, VK_INDEX_TYPE_UINT32);
-
-			uint32_t dynamicOffset = 0;
-			vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->GetLayout(), 0, 1, &pipeline->descriptorSets[currentFrame], 1, &dynamicOffset);
-
-			vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(model->Indices.size()), 1, 0, 0, 0);
+		// Reset the vectors for Models and lights
+		for (RenderInstance* instance : RenderInstances) {
+			instance->recordCommandBuffer(commandBuffer, imageIndex, commandPool, materials, currentFrame, swapChainFramebuffers[imageIndex]);
 		}
 
+
 #ifdef USEIMGUI
+		// Begin imgui render pass
+		vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+
 		drawImgui(commandBuffer);
+
+		// End imgui render pass
+		vkCmdEndRenderPass(commandBuffer);
 #endif // USEIMGUI
 
-
-		// End render pass
-		vkCmdEndRenderPass(commandBuffer);
 
 		if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
 			printf("failed to record command buffer!");
@@ -197,16 +165,29 @@ namespace Simple3D {
 
 
 
-	void Renderer::SumbitModelToFrame(Model* model) {
-		ModelsThisFrame.push_back(model);
+	void Renderer::SumbitModelToFrame(Model* model, RenderInstance* instance) {
+		instance->SubmitModel(model);
 	}
 
-	void Renderer::SubmitLightToFrame(Light& light) {
-		LightsThisFrame.push_back(light);
+	void Renderer::SubmitLightToFrame(Light& light, RenderInstance* instance) {
+		instance->SubmitLight(light);
 	}
 
-	void Renderer::SubmitMainCamera(Camera* cam) {
-		mainCamera = cam;
+	void Renderer::SubmitMainCamera(Camera* cam, RenderInstance* instance) {
+		instance->SetCamera(cam);
+	}
+
+
+	RenderInstance* Renderer::CreateRenderInstance() {
+		RenderInstance* instance =  new RenderInstance(RenderDevice, swapChain, renderPass);
+		RenderInstances.push_back(instance);
+		return instance;
+	}
+
+	RenderInstance* Renderer::CreateRenderInstance(bool RenderToImgui) {
+		RenderInstance* instance = new RenderInstance(RenderDevice, swapChain, renderPass,RenderToImgui );
+		RenderInstances.push_back(instance);
+		return instance;
 	}
 
 
@@ -260,6 +241,28 @@ namespace Simple3D {
 	Renderer::~Renderer() {
 		// Wait for GPU to finish all operations
 		vkDeviceWaitIdle(RenderDevice->getLogicalDevice());
+
+
+#ifdef USEIMGUI
+
+		// Delete Imgui
+		ImGui_ImplVulkan_Shutdown();
+#ifdef SDL_WINDOW
+		ImGui_ImplSDL2_Shutdown();
+#else
+		ImGui_ImplGlfw_Shutdown();
+#endif
+		ImGui::DestroyContext();
+
+
+#endif // USEIMGUI
+
+
+
+		// Reset the vectors for Models and lights
+		for (RenderInstance* instance : RenderInstances) {
+			delete instance;
+		}
 
 		// Cleanup synchronization objects
 		for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {

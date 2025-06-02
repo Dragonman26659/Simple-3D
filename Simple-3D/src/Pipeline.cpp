@@ -378,7 +378,7 @@ namespace Simple3D {
             uboWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
             uboWrite.descriptorCount = 1;
             uboWrite.pBufferInfo = &uboBufferInfo;
-
+                
             descriptorWrites.push_back(uboWrite);
 
 

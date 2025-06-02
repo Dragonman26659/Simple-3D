@@ -9,6 +9,7 @@
 #include "Internal/SwapChain.h"
 #include "Internal/Pipeline.h"
 #include "Internal/DepthBuffer.h"
+#include "Internal/RenderInstance.h"
 
 
 // Components
@@ -18,23 +19,6 @@
 
 
 namespace Simple3D {
-
-#ifdef USEIMGUI
-	struct ImGuiInitInfo {
-		VkInstance instance;
-		VkPhysicalDevice physicalDevice;
-		VkDevice device;
-		uint32_t queueFamily;
-		VkQueue graphicsQueue;
-		VkDescriptorPool descriptorPool;
-		uint32_t minImageCount;
-	};
-#endif
-
-
-
-
-
 	class Renderer {
 	public:
 // Changes based on if you use SDL or GLFW for windowing
@@ -191,21 +175,34 @@ namespace Simple3D {
 		void RecreateSwapChain();
 
 		Material* CreateMaterial(MaterialInfo info);
-		void SumbitModelToFrame(Model* model);
-		void SubmitMainCamera(Camera* cam);
-		void SubmitLightToFrame(Light& light);
+
+
+		void SumbitModelToFrame(Model* model, RenderInstance* instance);
+		void SubmitMainCamera(Camera* cam, RenderInstance* instance);
+		void SubmitLightToFrame(Light& light, RenderInstance* instance);
+
+		RenderInstance* CreateRenderInstance();
+		RenderInstance* CreateRenderInstance(bool RenderToImgui);
 
 
 #ifdef USEIMGUI
 		// Returns all needed information to be able to use Imgui
-		ImGuiInitInfo Renderer::GetImGUIinfo() {
-			ImGuiInitInfo info;
-
+		ImGui_ImplVulkan_InitInfo Renderer::GetImGUIinfo() {
+			ImGui_ImplVulkan_InitInfo info = {};
 
 			// Create separate pool for ImGui
 			VkDescriptorPoolSize pool_sizes[] = {
 				{ VK_DESCRIPTOR_TYPE_SAMPLER, 1000 },
-				{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000 }
+				{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000 },
+				{ VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1000 },
+				{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1000 },
+				{ VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 1000 },
+				{ VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, 1000 },
+				{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1000 },
+				{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1000 },
+				{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1000 },
+				{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1000 },
+				{ VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1000 }
 			};
 
 			VkDescriptorPoolCreateInfo pool_info = {};
@@ -217,24 +214,30 @@ namespace Simple3D {
 
 			vkCreateDescriptorPool(RenderDevice->getLogicalDevice(), &pool_info, nullptr, &imguiPool);
 
-			info.instance = instance;
-			info.device = RenderDevice->getLogicalDevice();
-			info.physicalDevice = RenderDevice->getPhysicalDevice();
-			info.graphicsQueue = RenderDevice->getVKgraphicsQueue();
-			info.queueFamily = RenderDevice->findQueueFamilies().graphicsFamily.value();
-			info.descriptorPool = imguiPool;
-			info.minImageCount = swapChain->getImageViews().size();
+			info.Instance = instance;
+			info.PhysicalDevice = RenderDevice->getPhysicalDevice();
+			info.Device = RenderDevice->getLogicalDevice();
+			info.QueueFamily = RenderDevice->findQueueFamilies().graphicsFamily.value();
+			info.Queue = RenderDevice->getVKgraphicsQueue();
+			info.DescriptorPool = imguiPool;
+			info.MinImageCount = swapChain->getImageViews().size();
+			info.ImageCount = info.MinImageCount;
+			info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
+			info.RenderPass = renderPass;
 
-
+			info.PipelineRenderingCreateInfo = {}; 
+			info.PipelineRenderingCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO; 
+			info.PipelineRenderingCreateInfo.colorAttachmentCount = 1; 
+			info.PipelineRenderingCreateInfo.pColorAttachmentFormats = &swapChain->GetSwapChainImageFormat(); 
 
 			return info;
 		}
 
-
-
-		void drawImgui(VkCommandBuffer cmd) {
+		void NewImguiframe() {
 			// Begin new frame
 			ImGui_ImplVulkan_NewFrame();
+
+			// Platform newFrame
 #ifdef SDL_WINDOW
 			ImGui_ImplSDL2_NewFrame();
 #else
@@ -242,22 +245,87 @@ namespace Simple3D {
 #endif // SDL_WINDOW
 
 			ImGui::NewFrame();
+		}
 
-			// Your UI code here
-			ImGui::ShowDemoWindow();
 
-			// Render
+
+		void drawImgui(VkCommandBuffer cmd) {
+			if (!usingImgui)
+				return;
+
+			// 1. Early validation
+			if (cmd == VK_NULL_HANDLE) {
+				// Log error: Invalid command buffer
+				return;
+			}
+
+			if (ImGui::GetCurrentContext() == nullptr) {
+				// Log error: Context not initialized
+				return;
+			}
+
+			// 4. Render and get draw data
 			ImGui::Render();
+			ImDrawData* draw_data = ImGui::GetDrawData();
+			if (draw_data == nullptr) {
+				// Log warning: No draw data to render
+				return;
+			}
 
+			// 5. Setup rendering info
 			VkRenderingInfo renderInfo = {};
 			renderInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
 			renderInfo.renderArea.extent = swapChain->GetSwapChainExtent();
 			renderInfo.colorAttachmentCount = 1;
 
+			// 6. Begin rendering
 			vkCmdBeginRendering(cmd, &renderInfo);
-			ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
+
+			// 7. Render ImGui
+			ImGui_ImplVulkan_RenderDrawData(draw_data, cmd);
+
+			// 8. End rendering
 			vkCmdEndRendering(cmd);
 		}
+
+		void initImgui() {
+			// 1. Create ImGui context
+			IMGUI_CHECKVERSION();
+			ImGui::CreateContext();
+
+			// 2. Configure ImGui IO settings
+			ImGuiIO& io = ImGui::GetIO();
+			io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
+			io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
+			io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;         // Enable Docking
+
+			// 3. Initialize platform backend
+#ifdef SDL_WINDOW
+			ImGui_ImplSDL2_InitForVulkan(window);
+#else
+			ImGui_ImplGlfw_InitForVulkan(window);
+#endif
+
+			// 4. Initialize Vulkan backend
+			ImGui_ImplVulkan_InitInfo init_info = GetImGUIinfo();
+			init_info.PipelineCache = nullptr;
+			init_info.Allocator = nullptr;
+			init_info.MinImageCount = swapChain->getImageViews().size();
+			init_info.ImageCount = init_info.MinImageCount;
+			init_info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
+
+			// Initialize Vulkan backend
+			ImGui_ImplVulkan_Init(&init_info);
+
+			// 5. Create font textures
+			ImGui_ImplVulkan_CreateFontsTexture();
+
+			usingImgui = true;
+		}
+
+
+		bool usingImgui = false;
+
 #endif // USEIMGUI
 
 	private:
@@ -301,10 +369,6 @@ namespace Simple3D {
 		// DepthBuffer
 		DepthBuffer* depthBuffer;
 
-
-		// Camera
-		Camera* mainCamera;
-
 		// Information gathered from windows
 		const char** WindowExtensions;
 		uint32_t WindowExtensionCount = 0;
@@ -313,8 +377,7 @@ namespace Simple3D {
 		uint32_t currentFrame = 0;
 
 		// Models and lights
-		std::vector<Model*> ModelsThisFrame;
-		std::vector<Light> LightsThisFrame;
+		std::vector<RenderInstance*> RenderInstances;
 
 
 #ifdef USEIMGUI

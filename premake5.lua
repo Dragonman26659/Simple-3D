@@ -91,12 +91,21 @@ project "GLFW-Example"
         "%{prj.name}/**.hpp"
     }
 
+    files {
+        "vendor/imgui/imgui.cpp",
+        "vendor/imgui/imgui_draw.cpp",
+        "vendor/imgui/imgui_widgets.cpp",
+        "vendor/imgui/imgui_tables.cpp",
+        "vendor/imgui/imgui_demo.cpp"
+    }
+
     includedirs {
         "Simple-3D/include",
         "vendor/GLFW/include",
         "vendor/Vulkan/Include",
         "vendor/TinyObjLoader/Include",
-        "vendor/glm"
+        "vendor/glm",
+        "vendor/ImGui"
     }
 
 
@@ -123,6 +132,14 @@ project "GLFW-Example"
         systemversion "latest"
         architecture "x64"
 
+
+        -- Add feature-specific defines
+    filter { "options:use-sdl" }
+        defines { "SDL_WINDOW" }
+
+    filter { "options:use-imgui" }
+        defines { "USEIMGUI" }
+
 project "SDL-Example"
     location '%{prj.name}'
     kind "ConsoleApp"
@@ -140,12 +157,21 @@ project "SDL-Example"
         "%{prj.name}/**.hpp"
     }
 
+    files {
+        "vendor/imgui/imgui.cpp",
+        "vendor/imgui/imgui_draw.cpp",
+        "vendor/imgui/imgui_widgets.cpp",
+        "vendor/imgui/imgui_tables.cpp",
+        "vendor/imgui/imgui_demo.cpp"
+    }
+
     includedirs {
         "Simple-3D/include",
         "vendor/SDL/include",
         "vendor/Vulkan/Include",
         "vendor/TinyObjLoader/Include",
-        "vendor/glm"
+        "vendor/glm",
+        "vendor/ImGui"
     }
 
     libdirs { 
@@ -165,6 +191,13 @@ project "SDL-Example"
     filter "configurations:Release"
         defines {"NDEBUG"}
         symbols "On"
+
+    -- Add feature-specific defines
+    filter { "options:use-sdl" }
+        defines { "SDL_WINDOW" }
+
+    filter { "options:use-imgui" }
+        defines { "USEIMGUI" }
 
     filter "system:windows"
         cppdialect "C++17"
