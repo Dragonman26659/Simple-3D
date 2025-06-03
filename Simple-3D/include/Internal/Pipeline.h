@@ -17,7 +17,7 @@ namespace Simple3D {
 
 	class Pipeline {
 	public:
-		Pipeline(Device& s_Device, VkRenderPass& renderPass, Material* materialBinding);
+		Pipeline(Device& s_Device, VkRenderPass renderPass, Material* materialBinding);
 		~Pipeline();
 
 
@@ -25,6 +25,10 @@ namespace Simple3D {
 		VkPipelineLayout	GetLayout();
 		void				updateUniformBuffer(uint32_t currentImage, glm::mat4 PerspectiveMatrix, glm::mat4 ViewMatrix, glm::mat4 transform);
 		void				updateLights(uint32_t currentImage, const std::vector<Light>& lights);
+
+
+		// ONly to be used when using Imgui
+		void				setRenderPass(VkRenderPass newRenderPass);
 
 
 		// Make discriptor sets public cuz fuck getters
@@ -58,6 +62,9 @@ namespace Simple3D {
 		std::vector<void*> lightBuffersMapped;
 		std::vector<VkDeviceSize> lightBuffersSize;
 
+
+		std::vector<char> vertShaderCode;
+		std::vector<char> fragShaderCode;
 
 
 

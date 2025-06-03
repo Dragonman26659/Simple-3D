@@ -10,6 +10,7 @@
 #include "Internal/Pipeline.h"
 #include "Internal/DepthBuffer.h"
 #include "Internal/RenderInstance.h"
+#include "Internal/RenderTexture.h"
 
 
 // Components
@@ -182,7 +183,8 @@ namespace Simple3D {
 		void SubmitLightToFrame(Light& light, RenderInstance* instance);
 
 		RenderInstance* CreateRenderInstance();
-		RenderInstance* CreateRenderInstance(bool RenderToImgui);
+		RenderInstance* CreateRenderInstance(RenderTexture texture);
+		void DestroyAllRenderInstances();
 
 
 #ifdef USEIMGUI
@@ -249,7 +251,7 @@ namespace Simple3D {
 
 
 
-		void drawImgui(VkCommandBuffer cmd) {
+		void drawImgui(VkCommandBuffer cmd, uint32_t imageIndex) {
 			if (!usingImgui)
 				return;
 
@@ -272,20 +274,13 @@ namespace Simple3D {
 				return;
 			}
 
-			// 5. Setup rendering info
-			VkRenderingInfo renderInfo = {};
-			renderInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
-			renderInfo.renderArea.extent = swapChain->GetSwapChainExtent();
-			renderInfo.colorAttachmentCount = 1;
-
-			// 6. Begin rendering
-			vkCmdBeginRendering(cmd, &renderInfo);
-
-			// 7. Render ImGui
-			ImGui_ImplVulkan_RenderDrawData(draw_data, cmd);
-
-			// 8. End rendering
-			vkCmdEndRendering(cmd);
+			try {
+				// 7. Render ImGui
+				ImGui_ImplVulkan_RenderDrawData(draw_data, cmd);
+			}
+			catch (...) {
+				return;
+			}
 		}
 
 		void initImgui() {
@@ -353,6 +348,7 @@ namespace Simple3D {
 
 		// Render pass
 		VkRenderPass renderPass;
+		VkRenderPass ClearRenderPass;
 
 		// Framebuffer
 		std::vector<VkFramebuffer> swapChainFramebuffers;
@@ -360,10 +356,6 @@ namespace Simple3D {
 		// Device, swapchain and pipeline (ik useful comment)
 		Device* RenderDevice;
 		SwapChain* swapChain;
-
-
-		// Store one pipeline per material
-		std::unordered_map<Material*, Pipeline*> materials;
 
 
 		// DepthBuffer

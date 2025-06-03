@@ -111,15 +111,11 @@ namespace Simple3D {
 
 
 	void Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex) {
-		std::array<VkClearValue, 2> clearValues{};
-		clearValues[0].color = { {0.0f, 0.0f, 0.0f, 1.0f} };
-		clearValues[1].depthStencil = { 1.0f, 0 };
-
 		// Begin to record
 		VkCommandBufferBeginInfo beginInfo{};
 		beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 		beginInfo.flags = 0; // Optional 
-		beginInfo.pInheritanceInfo = nullptr; // Optional 
+		beginInfo.pInheritanceInfo = nullptr; // Optional
 
 		if (vkBeginCommandBuffer(commandBuffer, &beginInfo) != VK_SUCCESS) {
 			printf("failed to begin recording command buffer!");
@@ -127,29 +123,44 @@ namespace Simple3D {
 		}
 
 
-		// Get render pass and its information
-		VkRenderPassBeginInfo renderPassInfo{};
-		renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-		renderPassInfo.renderPass = renderPass;
-		renderPassInfo.framebuffer = swapChainFramebuffers[imageIndex];
-		renderPassInfo.renderArea.offset = { 0, 0 };
-		renderPassInfo.renderArea.extent = swapChain->GetSwapChainExtent();
-		renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
-		renderPassInfo.pClearValues = clearValues.data();
+		// Clear Screen
+		VkRenderPassBeginInfo clearRenderPassInfo = {};
+		clearRenderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+		clearRenderPassInfo.renderPass = renderPass;
+		clearRenderPassInfo.framebuffer = swapChainFramebuffers[imageIndex];
+		clearRenderPassInfo.renderArea.offset = { 0, 0 };
+		clearRenderPassInfo.renderArea.extent = swapChain->GetSwapChainExtent();
+
+		std::array<VkClearValue, 2> clearValues = {};
+		clearValues[0].color = { {0.0f, 0.0f, 0.0f, 1.0f} };  // Black clear color
+		clearValues[1].depthStencil = { 1.0f, 0 };
+		clearRenderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
+		clearRenderPassInfo.pClearValues = clearValues.data();
 
 
 		// Reset the vectors for Models and lights
 		for (RenderInstance* instance : RenderInstances) {
-			instance->recordCommandBuffer(commandBuffer, imageIndex, commandPool, materials, currentFrame, swapChainFramebuffers[imageIndex]);
+			instance->recordCommandBuffer(commandBuffer, imageIndex, commandPool, currentFrame, swapChainFramebuffers[imageIndex]);
 		}
 
 
 #ifdef USEIMGUI
+		// Get render pass and its information
+		VkRenderPassBeginInfo renderPassInfo{}; 
+		renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO; 
+		renderPassInfo.renderPass = ClearRenderPass; 
+		renderPassInfo.framebuffer = swapChainFramebuffers[imageIndex]; 
+		renderPassInfo.renderArea.offset = { 0, 0 }; 
+		renderPassInfo.renderArea.extent = swapChain->GetSwapChainExtent(); 
+		renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size()); 
+		renderPassInfo.pClearValues = clearValues.data(); 
+
+
 		// Begin imgui render pass
 		vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
 
-		drawImgui(commandBuffer);
+		drawImgui(commandBuffer, imageIndex);
 
 		// End imgui render pass
 		vkCmdEndRenderPass(commandBuffer);
@@ -184,10 +195,17 @@ namespace Simple3D {
 		return instance;
 	}
 
-	RenderInstance* Renderer::CreateRenderInstance(bool RenderToImgui) {
-		RenderInstance* instance = new RenderInstance(RenderDevice, swapChain, renderPass,RenderToImgui );
+	RenderInstance* Renderer::CreateRenderInstance(RenderTexture texture) {
+		RenderInstance* instance = new RenderInstance(RenderDevice, swapChain, renderPass, texture);
 		RenderInstances.push_back(instance);
 		return instance;
+	}
+
+	void Renderer::DestroyAllRenderInstances() {
+		// Reset the vectors for Models and lights
+		for (RenderInstance* instance : RenderInstances) {
+			delete instance;
+		}
 	}
 
 
@@ -196,8 +214,9 @@ namespace Simple3D {
 	Material* Renderer::CreateMaterial(MaterialInfo info) {
 		Material* material = new Material(RenderDevice, &commandPool, info.vertexSource, info.FragmentSource, info.textures, info.isLit);
 
-		// Add material to the materials map with a new pipeline
-		materials[material] = new Pipeline(*RenderDevice, renderPass, material);
+		for (RenderInstance* instance : RenderInstances) {
+			instance->CreateMaterial(material, commandPool);
+		}
 
 		return material;
 	}
@@ -277,12 +296,6 @@ namespace Simple3D {
 		// Cleanup framebuffers
 		for (auto framebuffer : swapChainFramebuffers) {
 			vkDestroyFramebuffer(RenderDevice->getLogicalDevice(), framebuffer, nullptr);
-		}
-
-		// Cleanup materials (before render pass since they depend on it)
-		for (const auto& pair : materials) {
-			delete(pair.second);
-			delete(pair.first);
 		}
 
 		delete depthBuffer;
@@ -391,6 +404,8 @@ namespace Simple3D {
 			extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
 		}
 
+		
+
 		return extensions;
 	}
 
@@ -419,58 +434,56 @@ namespace Simple3D {
 	}
 
 	void Renderer::CreateRenderPass() {
+		// Main render pass attachments
 		VkAttachmentDescription colorAttachment{};
 		colorAttachment.format = swapChain->GetSwapChainImageFormat();
 		colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
-		colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR; 
-		colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE; 
+		colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+		colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 		colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-		colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE; 
-		colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+		colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+		colorAttachment.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;  // Changed from UNDEFINED
 		colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
-		VkAttachmentDescription depthAttachment{}; 
-		depthAttachment.format = findDepthFormat(RenderDevice); 
-		depthAttachment.samples = VK_SAMPLE_COUNT_1_BIT; 
-		depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR; 
-		depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE; 
-		depthAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE; 
-		depthAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE; 
-		depthAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED; 
-		depthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL; 
+		VkAttachmentDescription depthAttachment{};
+		depthAttachment.format = findDepthFormat(RenderDevice);
+		depthAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+		depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+		depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+		depthAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+		depthAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+		depthAttachment.initialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;  // Changed from UNDEFINED
+		depthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
-		VkAttachmentReference colorAttachmentRef{}; 
-		colorAttachmentRef.attachment = 0; 
-		colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; 
+		// Attachment references
+		VkAttachmentReference colorAttachmentRef{};
+		colorAttachmentRef.attachment = 0;
+		colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
 		VkAttachmentReference depthAttachmentRef{};
 		depthAttachmentRef.attachment = 1;
 		depthAttachmentRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
-
-
-
+		// Subpass description
 		VkSubpassDescription subpass{};
 		subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
 		subpass.colorAttachmentCount = 1;
 		subpass.pColorAttachments = &colorAttachmentRef;
 		subpass.pDepthStencilAttachment = &depthAttachmentRef;
 
+		// Subpass dependencies
+		VkSubpassDependency dependency{};
+		dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
+		dependency.dstSubpass = 0;
+		dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT |
+			VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+		dependency.srcAccessMask = 0;
+		dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT |
+			VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+		dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
+			VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 
-
-		VkSubpassDependency dependency{}; 
-		dependency.srcSubpass = VK_SUBPASS_EXTERNAL; 
-		dependency.dstSubpass = 0; 
-		dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT; 
-		dependency.srcAccessMask = 0; 
-		dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT; 
-		dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-		dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
-		dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
-		dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-
-
-		// Actual renderpass
+		// Main render pass
 		std::array<VkAttachmentDescription, 2> attachments = { colorAttachment, depthAttachment };
 		VkRenderPassCreateInfo renderPassInfo{};
 		renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
@@ -482,8 +495,24 @@ namespace Simple3D {
 		renderPassInfo.pDependencies = &dependency;
 
 		if (vkCreateRenderPass(RenderDevice->getLogicalDevice(), &renderPassInfo, nullptr, &renderPass) != VK_SUCCESS) {
-			printf("failed to create render pass!");
 			throw std::runtime_error("failed to create render pass!");
+		}
+
+		// Clear render pass
+		VkAttachmentDescription colorAttachmentClear = colorAttachment;
+		colorAttachmentClear.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+		colorAttachmentClear.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+		VkAttachmentDescription depthAttachmentClear = depthAttachment;
+		depthAttachmentClear.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+		depthAttachmentClear.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+		attachments = { colorAttachmentClear, depthAttachmentClear };
+		VkRenderPassCreateInfo renderPassInfoClear = renderPassInfo;
+		renderPassInfoClear.pAttachments = attachments.data();
+
+		if (vkCreateRenderPass(RenderDevice->getLogicalDevice(), &renderPassInfoClear, nullptr, &ClearRenderPass) != VK_SUCCESS) {
+			throw std::runtime_error("failed to create clear render pass!");
 		}
 	}
 

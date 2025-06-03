@@ -213,10 +213,10 @@ int main() {
     Simple3D::Light* myLight = new Simple3D::Light;
 
     Simple3D::RenderInstance* mainInstance = renderer->CreateRenderInstance();    
-    //Simple3D::RenderInstance* imguiWinInstance = renderer->CreateRenderInstance(true);
 
-
+#ifdef USEIMGUI
     renderer->initImgui();
+#endif // USEIMGUI
 
 
     myLight->type = Simple3D::directional;
@@ -233,14 +233,15 @@ int main() {
 
     // Setup Materials for all models
     Simple3D::MaterialInfo info;
-    info.FragmentSource = "shaders/frag.spv";
+    info.FragmentSource = "shaders/lit-frag.spv";
     info.vertexSource = "shaders/vert.spv";
     info.textures.push_back("textures/albeado_viking_room.png");
-    info.isLit = false;
+    info.isLit = true;
 
 
     // Bind material to model and set its postion
-    myModel->BindMaterial(renderer->CreateMaterial(info));
+    Simple3D::Material* material = renderer->CreateMaterial(info);
+    myModel->BindMaterial(material);
     myModel->SetTransform(glm::rotate(glm::mat4(1.0f), glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f)));
     myModel->SetTransform(glm::rotate(myModel->GetTransform(), glm::radians(-90.0f), glm::vec3(0.0f, 0.0f, 1.0f)));
 
@@ -250,7 +251,6 @@ int main() {
     mainCam->lookAt(glm::vec3(0.0f));
 
     renderer->SubmitMainCamera(mainCam, mainInstance);
-    //renderer->SubmitMainCamera(mainCam, imguiWinInstance);
 
     // Main loop
     bool running = true;
@@ -273,19 +273,19 @@ int main() {
             cameraController.handleEvent(event, deltaTime);
         }
 
-
+#ifdef USEIMGUI
         renderer->NewImguiframe();
 
-
         ImGui::ShowDemoWindow();
+
+
+#endif // USEIMGUI
 
 
 
 
         renderer->SumbitModelToFrame(myModel, mainInstance);
-        //renderer->SumbitModelToFrame(myModel, imguiWinInstance);
         renderer->SubmitLightToFrame(*myLight, mainInstance);
-        //renderer->SubmitLightToFrame(*myLight, imguiWinInstance);
         renderer->Render();
 
         lastFrameTime = currentTime;
@@ -309,6 +309,7 @@ int main() {
     delete myModel;
     delete mainCam;
     delete myLight;
+    delete material;
     delete renderer;
 
     SDL_DestroyWindow(window);

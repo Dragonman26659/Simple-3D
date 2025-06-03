@@ -6,6 +6,7 @@
 #include "Internal/SwapChain.h"
 #include "Internal/Pipeline.h"
 #include "Internal/DepthBuffer.h"
+#include "Internal/RenderTexture.h"
 
 
 // Components
@@ -19,8 +20,7 @@ namespace Simple3D {
     private:
         // Vulkan info
         VkRenderPass renderPass;
-        VkImageView imageView;
-        VkFramebuffer framebuffer;
+        RenderTexture texture;
 
         // Render info
         Camera* camera;
@@ -30,15 +30,20 @@ namespace Simple3D {
         Device* RenderDevice;
         SwapChain* swapChain;
 
+        // Store one pipeline per material
+        std::unordered_map<Material*, Pipeline*> materials;
 
-        bool RenderToImgui;
+
+        bool RenderToTexture;
 
     public:
         RenderInstance(Device* RenderDevice, SwapChain* swapChain, VkRenderPass renderPass)
-            : RenderDevice(RenderDevice), swapChain(swapChain), renderPass(renderPass), RenderToImgui(false) {
+            : RenderDevice(RenderDevice), swapChain(swapChain), renderPass(renderPass), RenderToTexture(false) {
         }
 
-        RenderInstance(Device* RenderDevice, SwapChain* swapChain, VkRenderPass renderPass, bool RenderToImgui);
+        RenderInstance(Device* RenderDevice, SwapChain* swapChain, VkRenderPass renderPass, RenderTexture texture);
+
+        ~RenderInstance();
 
         void SetCamera(Camera* cam) {
             camera = cam;
@@ -52,19 +57,11 @@ namespace Simple3D {
             lights.push_back(light);
         }
 
-        void recordCommandBuffer(
-            VkCommandBuffer cmd, uint32_t imageIndex, VkCommandPool commandPool
-            , std::unordered_map<Material*, Pipeline*> materials, uint32_t currentFrame
-            , VkFramebuffer framebuffer
-            );
-
-        VkRenderPass createRenderPassForImageView();
-
-        void createFramebufferForImageView();
-
-        VkImageView GetImageView() { return imageView; }
+        void recordCommandBuffer(VkCommandBuffer cmd, uint32_t imageIndex, VkCommandPool commandPool, uint32_t currentFrame, VkFramebuffer framebuffer);
 
 
         void ClearVectors();
+
+        void CreateMaterial(Material* material, VkCommandPool commandPool);
     };
 }

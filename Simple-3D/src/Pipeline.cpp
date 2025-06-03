@@ -4,7 +4,12 @@
 
 
 namespace Simple3D {
-    Pipeline::Pipeline(Device& device, VkRenderPass& renderPass, Material* materialBinding) : s_Device(device), renderPass(renderPass), material(materialBinding) {
+    Pipeline::Pipeline(Device& device, VkRenderPass renderPass, Material* materialBinding) : s_Device(device), renderPass(renderPass), material(materialBinding) {
+
+        vertShaderCode = readFile(material->vertexSource);
+        fragShaderCode = readFile(material->FragmentSource);
+
+
         createDescriptorSetLayout();
         CreatePipeline();
 
@@ -64,9 +69,6 @@ namespace Simple3D {
 
 
     void Pipeline::CreatePipeline() {
-        auto vertShaderCode = readFile(material->vertexSource);
-        auto fragShaderCode = readFile(material->FragmentSource);
-
         VkShaderModule vertShaderModule = createShaderModule(vertShaderCode);
         VkShaderModule fragShaderModule = createShaderModule(fragShaderCode);
 
@@ -498,5 +500,17 @@ namespace Simple3D {
 
     VkPipelineLayout	Pipeline::GetLayout() {
         return pipelineLayout;
+    }
+
+
+
+    void Pipeline::setRenderPass(VkRenderPass newRenderPass) {
+        if (graphicsPipeline != VK_NULL_HANDLE) {
+            vkDestroyPipeline(s_Device.getLogicalDevice(), graphicsPipeline, nullptr);
+        }
+
+        renderPass = newRenderPass;
+
+        CreatePipeline();
     }
 }
