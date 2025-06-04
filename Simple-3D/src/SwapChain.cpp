@@ -38,7 +38,7 @@ namespace Simple3D {
 		createInfo.imageColorSpace = surfaceFormat.colorSpace; 
 		createInfo.imageExtent = extent; 
 		createInfo.imageArrayLayers = 1; 
-		createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT; 
+		createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
 
 		QueueFamilyIndices indices = s_Device.findQueueFamilies();
 		uint32_t queueFamilyIndices[] = { indices.graphicsFamily.value(), indices.presentFamily.value() };
@@ -142,12 +142,15 @@ namespace Simple3D {
 		swapChainImageViews.resize(swapChainImages.size());
 
 		for (uint32_t i = 0; i < swapChainImages.size(); i++) {
-			swapChainImageViews[i] = createImageView(swapChainImages[i], swapChainImageFormat, VK_IMAGE_ASPECT_COLOR_BIT, &s_Device);
+			swapChainImageViews[i] = createImageView(swapChainImages[i], swapChainImageFormat, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, &s_Device);
 		}
 	}
 
 	const std::vector<VkImageView>& SwapChain::getImageViews() const {
 		return swapChainImageViews;
+	}
+	const std::vector<VkImage>& SwapChain::getImages() const {
+		return swapChainImages;
 	}
 
 	VkFormat& SwapChain::GetSwapChainImageFormat() {

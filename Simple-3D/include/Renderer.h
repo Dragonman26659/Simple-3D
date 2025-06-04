@@ -235,7 +235,11 @@ namespace Simple3D {
 			return info;
 		}
 
-		void NewImguiframe() {
+		bool NewImguiframe() {
+			if (isMinimised())
+				return false;
+
+
 			// Begin new frame
 			ImGui_ImplVulkan_NewFrame();
 
@@ -247,6 +251,8 @@ namespace Simple3D {
 #endif // SDL_WINDOW
 
 			ImGui::NewFrame();
+
+			return true;
 		}
 
 

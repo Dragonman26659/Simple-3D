@@ -145,25 +145,53 @@ namespace Simple3D {
 
 
 #ifdef USEIMGUI
-		// Get render pass and its information
-		VkRenderPassBeginInfo renderPassInfo{}; 
-		renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO; 
-		renderPassInfo.renderPass = ClearRenderPass; 
-		renderPassInfo.framebuffer = swapChainFramebuffers[imageIndex]; 
-		renderPassInfo.renderArea.offset = { 0, 0 }; 
-		renderPassInfo.renderArea.extent = swapChain->GetSwapChainExtent(); 
-		renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size()); 
-		renderPassInfo.pClearValues = clearValues.data(); 
+		if (usingImgui) {
+			// Add proper image barrier
+			VkImageMemoryBarrier barrier{};
+			barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+			barrier.image = swapChain->getImages()[imageIndex];
+			barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+			barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+			barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+			barrier.subresourceRange.baseMipLevel = 0;
+			barrier.subresourceRange.levelCount = 1;
+			barrier.subresourceRange.baseArrayLayer = 0;
+			barrier.subresourceRange.layerCount = 1;
+			barrier.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+			barrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+			barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+			barrier.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT;
+
+			vkCmdPipelineBarrier(
+				commandBuffer,
+				VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+				VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+				0,
+				0, nullptr,
+				0, nullptr,
+				1, &barrier
+			);
+
+			// Get render pass and its information
+			VkRenderPassBeginInfo renderPassInfo{};
+			renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+			renderPassInfo.renderPass = ClearRenderPass;
+			renderPassInfo.framebuffer = swapChainFramebuffers[imageIndex];
+			renderPassInfo.renderArea.offset = { 0, 0 };
+			renderPassInfo.renderArea.extent = swapChain->GetSwapChainExtent();
+			renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
+			renderPassInfo.pClearValues = clearValues.data();
 
 
-		// Begin imgui render pass
-		vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+			// Begin imgui render pass
+			vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
 
-		drawImgui(commandBuffer, imageIndex);
+			drawImgui(commandBuffer, imageIndex);
 
-		// End imgui render pass
-		vkCmdEndRenderPass(commandBuffer);
+			// End imgui render pass
+			vkCmdEndRenderPass(commandBuffer);
+		}
 #endif // USEIMGUI
 
 
@@ -263,16 +291,16 @@ namespace Simple3D {
 
 
 #ifdef USEIMGUI
-
-		// Delete Imgui
-		ImGui_ImplVulkan_Shutdown();
+		if (usingImgui) {
+			// Delete Imgui
+			ImGui_ImplVulkan_Shutdown();
 #ifdef SDL_WINDOW
-		ImGui_ImplSDL2_Shutdown();
+			ImGui_ImplSDL2_Shutdown();
 #else
-		ImGui_ImplGlfw_Shutdown();
+			ImGui_ImplGlfw_Shutdown();
 #endif
-		ImGui::DestroyContext();
-
+			ImGui::DestroyContext();
+		}
 
 #endif // USEIMGUI
 
@@ -442,7 +470,7 @@ namespace Simple3D {
 		colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 		colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 		colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-		colorAttachment.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;  // Changed from UNDEFINED
+		colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 		colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
 		VkAttachmentDescription depthAttachment{};
@@ -452,7 +480,7 @@ namespace Simple3D {
 		depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
 		depthAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 		depthAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-		depthAttachment.initialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;  // Changed from UNDEFINED
+		depthAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 		depthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
 		// Attachment references
@@ -501,11 +529,13 @@ namespace Simple3D {
 		// Clear render pass
 		VkAttachmentDescription colorAttachmentClear = colorAttachment;
 		colorAttachmentClear.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
-		colorAttachmentClear.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+		colorAttachmentClear.initialLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		colorAttachmentClear.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
 		VkAttachmentDescription depthAttachmentClear = depthAttachment;
 		depthAttachmentClear.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
 		depthAttachmentClear.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+		depthAttachmentClear.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
 		attachments = { colorAttachmentClear, depthAttachmentClear };
 		VkRenderPassCreateInfo renderPassInfoClear = renderPassInfo;

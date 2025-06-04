@@ -233,10 +233,10 @@ int main() {
 
     // Setup Materials for all models
     Simple3D::MaterialInfo info;
-    info.FragmentSource = "shaders/lit-frag.spv";
+    info.FragmentSource = "shaders/frag.spv";
     info.vertexSource = "shaders/vert.spv";
     info.textures.push_back("textures/albeado_viking_room.png");
-    info.isLit = true;
+    info.isLit = false;
 
 
     // Bind material to model and set its postion
@@ -274,11 +274,10 @@ int main() {
         }
 
 #ifdef USEIMGUI
-        renderer->NewImguiframe();
-
-        ImGui::ShowDemoWindow();
-
-
+        // Only bother rendering imgui if the window is actuale able to draw
+        if (renderer->NewImguiframe()) {
+            ImGui::ShowDemoWindow();
+        }
 #endif // USEIMGUI
 
 
@@ -309,8 +308,8 @@ int main() {
     delete myModel;
     delete mainCam;
     delete myLight;
-    delete material;
     delete renderer;
+    delete material;
 
     SDL_DestroyWindow(window);
     SDL_Quit();
