@@ -1,6 +1,9 @@
 #pragma once
 // ONLY THINGS THAT ARE NEEDED FOR EVERY FILE
-
+#define GLM_FORCE_DEFAULT_ALIGNED_GENTYPES 
+#define GLM_FORCE_DEPTH_ZERO_TO_ONE 
+#define GLM_ENABLE_EXPERIMENTAL 
+ 
 
 // change definition based on if compiling for SDL or not
 #ifndef DEBUG
@@ -18,7 +21,6 @@ const bool enableValidationLayers = true;
 #ifdef _GLFW_H_ 
 #error "GLFW must not be included before Simple3D"
 #endif
-
 #define GLFW_INCLUDE_VULKAN
 #include "GLFW/glfw3.h"
 #endif
@@ -35,12 +37,6 @@ const bool enableValidationLayers = true;
 
 #endif // USEIMGUI
 
-
-
-
-#define GLM_FORCE_DEFAULT_ALIGNED_GENTYPES
-#define GLM_FORCE_DEPTH_ZERO_TO_ONE
-#define GLM_ENABLE_EXPERIMENTAL
 
 // 3rd party libs
 #include "vulkan/vulkan.h"
@@ -132,6 +128,9 @@ struct UniformBufferObject {
     glm::mat4 model;
     glm::mat4 view;
     glm::mat4 proj;
+
+
+    uint32_t ModelID;
 };
 
 

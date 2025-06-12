@@ -23,12 +23,17 @@ namespace Simple3D {
 
 
         void setPosition(const glm::vec3& pos);
+        //void setPosition(const glm::vec<3, float, (glm::qualifier)0>& pos);
 
         void setRotation(float pitchDegrees, float yawDegrees, float rollDegrees);
 
         void toggleProjectionMode();
 
+
+        
+
         glm::mat4 getViewMatrix() const;
+        //glm::mat<4, 4, float, (glm::qualifier)0> getViewMatrix();
 
         /// <summary>
         /// Generates and returns Projection matrix
@@ -36,11 +41,12 @@ namespace Simple3D {
         /// <param name="viewportWidth">Width of current viewport</param>
         /// <param name="viewportHeight">HEight of current viewport</param>
         /// <returns> Projection Matrix</returns>
-        glm::mat4 getProjectionMatrix(float viewportWidth, float viewportHeight) const;
+        const glm::mat4 getProjectionMatrix(float viewportWidth, float viewportHeight) const;
+        //const glm::mat<4, 4, float, (glm::qualifier)0> getProjectionMatrix(float viewportWidth, float viewportHeight);
 
         // Getters for camera properties
-        glm::vec3 getPosition() const { return position; }
-        glm::vec3 getRotation() const { return glm::vec3(pitch, yaw, roll); }
+        const glm::vec3 getPosition() const { return position; }
+        const glm::vec3 getRotation() const { return glm::vec3(pitch, yaw, roll); }
         bool isPerspectiveMode() const { return perspectiveMode; }
 
         // Make camera look at coordinate

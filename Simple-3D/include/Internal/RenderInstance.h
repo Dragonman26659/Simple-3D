@@ -20,7 +20,7 @@ namespace Simple3D {
     private:
         // Vulkan info
         VkRenderPass renderPass;
-        RenderTexture texture;
+        RenderTexture* texture;
 
         // Render info
         Camera* camera;
@@ -33,15 +33,15 @@ namespace Simple3D {
         // Store one pipeline per material
         std::unordered_map<Material*, Pipeline*> materials;
 
-
+    public:
         bool RenderToTexture;
 
-    public:
+
         RenderInstance(Device* RenderDevice, SwapChain* swapChain, VkRenderPass renderPass)
             : RenderDevice(RenderDevice), swapChain(swapChain), renderPass(renderPass), RenderToTexture(false) {
         }
 
-        RenderInstance(Device* RenderDevice, SwapChain* swapChain, VkRenderPass renderPass, RenderTexture texture);
+        RenderInstance(Device* RenderDevice, SwapChain* swapChain, VkRenderPass renderPass, RenderTexture* texture);
 
         ~RenderInstance();
 

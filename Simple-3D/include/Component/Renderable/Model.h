@@ -34,8 +34,14 @@ namespace Simple3D {
 
         void BindMaterial(Material* newMaterial);
 
-        void SetTransform(glm::mat4 transform);
-        glm::mat4 GetTransform();
+        void SetTransform(const  glm::mat4 transform);
+
+
+        //void SetTransform(const glm::mat<4, 4, float, (glm::qualifier)0> n_transform);
+
+
+
+        const  glm::mat4 GetTransform();
 
         std::vector<Vertex> Verticies;
         std::vector<uint32_t> Indices;
@@ -55,12 +61,6 @@ namespace Simple3D {
         // Buffer Memory
         VkDeviceMemory indexBufferMemory;
         VkDeviceMemory vertexBufferMemory;
-
-        // Textures
-        /*
-        Map with name of texture and the corrosponding texture info
-        */
-        TextureBinding albeado;
 
 
 

@@ -13,6 +13,8 @@ namespace Simple3D {
 		// Image + image memory
 		VkImage textureImage;
 		VkDeviceMemory textureImageMemory;
+
+		int width, height;
 	};
 
 
@@ -41,4 +43,9 @@ namespace Simple3D {
 	bool hasStencilComponent(VkFormat format);
 
 	void createImage(uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage& image, VkDeviceMemory& imageMemory, Device* device);
+
+	void createTextureSampler(TextureBinding* binding, Device* device);
+
+
+	TextureBinding CreateTextureBinding(std::string filepath, Device* r_device, VkCommandPool* r_commandPool);
 }

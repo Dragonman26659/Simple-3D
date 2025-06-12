@@ -2,7 +2,7 @@
 
 
 namespace Simple3D {
-	RenderInstance::RenderInstance(Device* RenderDevice, SwapChain* swapChain, VkRenderPass renderPass, RenderTexture texture)
+	RenderInstance::RenderInstance(Device* RenderDevice, SwapChain* swapChain, VkRenderPass renderPass, RenderTexture* texture)
 		: RenderDevice(RenderDevice), swapChain(swapChain), renderPass(renderPass), RenderToTexture(true), texture(texture) {
 	}
 
@@ -28,12 +28,11 @@ namespace Simple3D {
 		// Get render pass and its information
 		VkRenderPassBeginInfo renderPassInfo{};
 		renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-		renderPassInfo.renderPass = renderPass;
 
 		// If rendering to an imgui window or not
 		if (RenderToTexture) {
-			renderPassInfo.framebuffer = texture.getFrameBuffer();
-			renderPassInfo.renderPass = texture.getRenderPass();;
+			renderPassInfo.framebuffer = texture->getFrameBuffer();
+			renderPassInfo.renderPass = texture->getRenderPass();;
 		}
 		else {
 			renderPassInfo.framebuffer = mainFrameBuffer;
@@ -109,7 +108,7 @@ namespace Simple3D {
 		// Add material to the materials map with a new pipeline
 
 		if (RenderToTexture)
-			materials[material] = new Pipeline(*RenderDevice, texture.getRenderPass(), material);
+			materials[material] = new Pipeline(*RenderDevice, texture->getRenderPass(), material);
 		else
 			materials[material] = new Pipeline(*RenderDevice, renderPass, material);
 	}

@@ -38,8 +38,10 @@ namespace Simple3D {
 		uint32_t imageIndex;
 		VkResult result = vkAcquireNextImageKHR(RenderDevice->getLogicalDevice(), swapChain->GetVKSwapchain(), UINT64_MAX, imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE, &imageIndex);
 
-		if (result == VK_ERROR_OUT_OF_DATE_KHR) {
-			RecreateSwapChain();
+		if (result == VK_ERROR_OUT_OF_DATE_KHR ||
+			result == VK_SUBOPTIMAL_KHR) {
+			WindoResize();
+
 			return;
 		}
 		else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
@@ -75,7 +77,8 @@ namespace Simple3D {
 		submitInfo.pSignalSemaphores = signalSemaphores;
 
 		if (vkQueueSubmit(RenderDevice->getVKgraphicsQueue(), 1, &submitInfo, inFlightFences[currentFrame]) != VK_SUCCESS) {
-			throw std::runtime_error("failed to submit draw command buffer!");
+			//throw std::runtime_error("failed to submit draw command buffer!");
+			return;
 		}
 
 		VkPresentInfoKHR presentInfo{};
@@ -117,6 +120,12 @@ namespace Simple3D {
 		beginInfo.flags = 0; // Optional 
 		beginInfo.pInheritanceInfo = nullptr; // Optional
 
+
+		for (RenderTexture* tex : RenderTextures) {
+			tex->transitionToPresentSrcKHR(&commandPool);
+		}
+
+
 		if (vkBeginCommandBuffer(commandBuffer, &beginInfo) != VK_SUCCESS) {
 			printf("failed to begin recording command buffer!");
 			throw std::runtime_error("failed to begin recording command buffer!");
@@ -137,10 +146,34 @@ namespace Simple3D {
 		clearRenderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
 		clearRenderPassInfo.pClearValues = clearValues.data();
 
+		bool haveRendered = false;
 
 		// Reset the vectors for Models and lights
 		for (RenderInstance* instance : RenderInstances) {
 			instance->recordCommandBuffer(commandBuffer, imageIndex, commandPool, currentFrame, swapChainFramebuffers[imageIndex]);
+
+			if (!instance->RenderToTexture) {
+				haveRendered = true;
+			}
+		}
+
+		if (!haveRendered) {
+			// Get render pass and its information
+			VkRenderPassBeginInfo renderPassInfo{};
+			renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+			renderPassInfo.framebuffer = swapChainFramebuffers[imageIndex];
+			renderPassInfo.renderPass = renderPass;
+			
+
+			renderPassInfo.renderArea.offset = { 0, 0 };
+			renderPassInfo.renderArea.extent = swapChain->GetSwapChainExtent();
+			renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
+			renderPassInfo.pClearValues = clearValues.data();
+
+
+			// Clear the screen
+			vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+			vkCmdEndRenderPass(commandBuffer);
 		}
 
 
@@ -162,10 +195,14 @@ namespace Simple3D {
 			barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 			barrier.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT;
 
+			// Add proper pipeline stages for synchronization
+			VkPipelineStageFlags srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+			VkPipelineStageFlags dstStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+
 			vkCmdPipelineBarrier(
 				commandBuffer,
-				VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-				VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+				srcStageMask,
+				dstStageMask,
 				0,
 				0, nullptr,
 				0, nullptr,
@@ -182,10 +219,24 @@ namespace Simple3D {
 			renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
 			renderPassInfo.pClearValues = clearValues.data();
 
-
 			// Begin imgui render pass
 			vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
+			// Add proper viewport setup
+			VkViewport viewport = {};
+			viewport.x = 0.0f;
+			viewport.y = 0.0f;
+			viewport.width = static_cast<float>(swapChain->GetSwapChainExtent().width);
+			viewport.height = static_cast<float>(swapChain->GetSwapChainExtent().height);
+			viewport.minDepth = 0.0f;
+			viewport.maxDepth = 1.0f;
+			vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+
+			// Add proper scissor
+			VkRect2D scissor = {};
+			scissor.offset = { 0, 0 };
+			scissor.extent = swapChain->GetSwapChainExtent();
+			vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
 			drawImgui(commandBuffer, imageIndex);
 
@@ -198,6 +249,11 @@ namespace Simple3D {
 		if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
 			printf("failed to record command buffer!");
 			throw std::runtime_error("failed to record command buffer!");
+		}
+
+
+		for (RenderTexture* tex : RenderTextures) {
+			tex->transitionToShaderReadOptimal(&commandPool);
 		}
 	}
 
@@ -223,7 +279,7 @@ namespace Simple3D {
 		return instance;
 	}
 
-	RenderInstance* Renderer::CreateRenderInstance(RenderTexture texture) {
+	RenderInstance* Renderer::CreateRenderInstance(RenderTexture* texture) {
 		RenderInstance* instance = new RenderInstance(RenderDevice, swapChain, renderPass, texture);
 		RenderInstances.push_back(instance);
 		return instance;
@@ -250,6 +306,24 @@ namespace Simple3D {
 	}
 
 
+	RenderTexture* Renderer::CreateRenderTexture() {
+		RenderTexture* texture = new RenderTexture(RenderDevice, swapChain);
+		RenderTextures.push_back(texture);
+		return texture;
+	}
+
+
+	void Renderer::WindoResize() {
+		RecreateSwapChain();
+
+		for (auto texture : RenderTextures) {
+			texture->resize(swapChain->GetSwapChainExtent().width, swapChain->GetSwapChainExtent().height);
+		}
+	}
+
+	TextureBinding Renderer::CreateTexture(std::string filepath) {
+		return CreateTextureBinding(filepath, RenderDevice, &commandPool);
+	}
 
 	
 

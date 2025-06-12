@@ -12,7 +12,7 @@ namespace Simple3D {
 		std::string FragmentSource;
 
 		bool isLit;
-		std::vector<std::string> textures;
+		std::unordered_map<std::string, std::string> textures;
 	};
 
 
@@ -23,7 +23,7 @@ namespace Simple3D {
 	*/
 	class Material {
 	public:
-		Material(Device* r_device, VkCommandPool* commandPool, std::string vertexSource, std::string FragmentSource, std::vector<std::string> textureNames, bool isLit);
+		Material(Device* r_device, VkCommandPool* commandPool, std::string vertexSource, std::string FragmentSource, std::unordered_map<std::string, std::string> textures, bool isLit);
 		~Material();
 
 
@@ -51,7 +51,6 @@ namespace Simple3D {
 
 		// texture Bindings
 		TextureBinding CreateTexture(std::string texture);
-		void createTextureSampler(TextureBinding* binding);
 		void DestroyImage(TextureBinding binding);
 	};
 }

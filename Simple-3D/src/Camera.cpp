@@ -1,5 +1,6 @@
 #include "Component/Tools/Camera.h"
 
+
 namespace Simple3D {
     void Camera::setPosition(const glm::vec3& pos) {
         position = pos;
@@ -14,6 +15,10 @@ namespace Simple3D {
     void Camera::toggleProjectionMode() {
         perspectiveMode = !perspectiveMode;
     }
+
+
+
+    //glm::mat<4, 4, float, 0>
 
     glm::mat4 Camera::getViewMatrix() const {
         // Convert Euler angles to radians for GLM
@@ -31,7 +36,7 @@ namespace Simple3D {
         return rotationMatrix * glm::translate(glm::mat4(1.0f), position);
     }
 
-    glm::mat4 Camera::getProjectionMatrix(float viewportWidth, float viewportHeight) const {
+    const glm::mat4 Camera::getProjectionMatrix(float viewportWidth, float viewportHeight) const {
         if (perspectiveMode) {
             return glm::perspective(glm::radians(fov),
                 viewportWidth / viewportHeight,

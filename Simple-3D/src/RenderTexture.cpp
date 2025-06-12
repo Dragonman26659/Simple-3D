@@ -7,6 +7,11 @@ namespace Simple3D {
 
 		createRenderPassForImageView();
 		createImageForImageView();
+		createImageView();
+		createFramebufferForImageView(swapChain->GetSwapChainExtent().width, swapChain->GetSwapChainExtent().height);
+		width = swapChain->GetSwapChainExtent().width;
+		height = swapChain->GetSwapChainExtent().height;
+		setupTransitionResources();
 	}
 
 	RenderTexture::RenderTexture() {
@@ -21,15 +26,14 @@ namespace Simple3D {
 
 
 
-	VkImageView RenderTexture::createImageView(VkDevice device, VkImage image, VkFormat format) {
-		VkImageView imageView;
+	void RenderTexture::createImageView() {
 
 		// Setup image view creation info
 		VkImageViewCreateInfo createInfo = {};
 		createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
 		createInfo.image = image;
 		createInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-		createInfo.format = format;
+		createInfo.format = swapChain->GetSwapChainImageFormat();
 
 		// Set up component mapping (swizzling)
 		createInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
@@ -45,11 +49,9 @@ namespace Simple3D {
 		createInfo.subresourceRange.layerCount = 1;
 
 		// Create the image view
-		if (vkCreateImageView(device, &createInfo, nullptr, &imageView) != VK_SUCCESS) {
+		if (vkCreateImageView(RenderDevice->getLogicalDevice(), &createInfo, nullptr, &imageView) != VK_SUCCESS) {
 			throw std::runtime_error("failed to create texture image view!");
 		}
-
-		return imageView;
 	}
 
 	void RenderTexture::createImageForImageView() {
@@ -66,7 +68,8 @@ namespace Simple3D {
 		imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
 		imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 		imageInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
-			VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT;
+			VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT |
+			VK_IMAGE_USAGE_SAMPLED_BIT;
 
 		if (vkCreateImage(RenderDevice->getLogicalDevice(), &imageInfo, nullptr, &image) != VK_SUCCESS) {
 			throw std::runtime_error("failed to create image!");
@@ -89,9 +92,11 @@ namespace Simple3D {
 		vkBindImageMemory(RenderDevice->getLogicalDevice(), image, imageMemory, 0);
 	}
 
-	void RenderTexture::createFramebufferForImageView() {
+	void RenderTexture::createFramebufferForImageView(int width_n, int height_n) {
 		// Create image view first
-		imageView = createImageView(RenderDevice->getLogicalDevice(), image, swapChain->GetSwapChainImageFormat());
+		width = width_n;
+		height = height_n;
+
 
 		if (!imageView) {
 			throw std::runtime_error("failed to create image view!");
@@ -104,8 +109,8 @@ namespace Simple3D {
 		framebufferInfo.renderPass = renderPass;
 		framebufferInfo.attachmentCount = 1;
 		framebufferInfo.pAttachments = attachments;
-		framebufferInfo.width = swapChain->GetSwapChainExtent().width;
-		framebufferInfo.height = swapChain->GetSwapChainExtent().height;
+		framebufferInfo.width = width;
+		framebufferInfo.height = height;
 		framebufferInfo.layers = 1;
 
 		if (vkCreateFramebuffer(RenderDevice->getLogicalDevice(), &framebufferInfo, nullptr, &framebuffer) != VK_SUCCESS) {
@@ -147,5 +152,137 @@ namespace Simple3D {
 		if (vkCreateRenderPass(RenderDevice->getLogicalDevice(), &renderPassInfo, nullptr, &renderPass) != VK_SUCCESS) {
 			throw std::runtime_error("failed to create render pass!");
 		}
+	}
+
+	TextureBinding* RenderTexture::getBinding() {
+		binding = new TextureBinding();
+
+		binding->view = imageView;
+		binding->textureImage = image;
+		binding->textureImageMemory = imageMemory;
+
+		binding->width = width;
+		binding->height = height;
+
+		createTextureSampler(binding, RenderDevice);
+
+		return binding;
+	}
+
+
+	void RenderTexture::cleanup() {
+		vkDestroyFramebuffer(RenderDevice->getLogicalDevice(), framebuffer, nullptr);
+		vkDestroyImageView(RenderDevice->getLogicalDevice(), imageView, nullptr);
+		vkFreeMemory(RenderDevice->getLogicalDevice(), imageMemory, nullptr);
+		vkDestroyImage(RenderDevice->getLogicalDevice(), image, nullptr);
+
+		framebuffer = VK_NULL_HANDLE;
+		imageView = VK_NULL_HANDLE;
+		image = VK_NULL_HANDLE;
+		imageMemory = VK_NULL_HANDLE;
+	}
+
+	bool RenderTexture::resize(int width, int height) {
+		cleanup();
+
+		createRenderPassForImageView();
+		createImageForImageView();
+		createImageView();
+		createFramebufferForImageView(width, height);
+
+
+		if (binding != nullptr) {
+			binding->view = imageView;
+			binding->textureImage = image;
+			binding->textureImageMemory = imageMemory;
+		}
+
+
+		createTextureSampler(binding, RenderDevice);
+
+
+		return true;
+	}
+
+	bool RenderTexture::transitionToPresentSrcKHR(VkCommandPool* cmdPool) {
+		VkCommandBuffer cmdBuf = beginSingleTimeCommands(RenderDevice, cmdPool);
+
+		VkImageMemoryBarrier barrier{};
+		barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+		barrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;     // Previous shader read access
+		barrier.dstAccessMask = 0;                             // No access needed during present
+		barrier.oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		barrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+		barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		barrier.image = image;
+		barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		barrier.subresourceRange.baseMipLevel = 0;
+		barrier.subresourceRange.levelCount = 1;
+		barrier.subresourceRange.baseArrayLayer = 0;
+		barrier.subresourceRange.layerCount = 1;
+
+		// Pipeline stage transition
+		VkPipelineStageFlags srcStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+		VkPipelineStageFlags dstStageMask = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+
+		vkCmdPipelineBarrier(
+			cmdBuf,
+			srcStageMask, dstStageMask,
+			0,
+			0, nullptr,
+			0, nullptr,
+			1, &barrier
+		);
+
+		endSingleTimeCommands(RenderDevice, cmdPool, &cmdBuf);
+		vkResetFences(RenderDevice->getLogicalDevice(), 1, &transitionFence);
+
+		return true;
+	}
+
+	bool RenderTexture::transitionToShaderReadOptimal(VkCommandPool* cmdPool) {
+		VkCommandBuffer cmdBuf = beginSingleTimeCommands(RenderDevice, cmdPool);
+
+		// Begin single-time command buffer
+		VkCommandBufferBeginInfo beginInfo{};
+		beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+		beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+		vkBeginCommandBuffer(cmdBuf, &beginInfo);
+
+		// Image barrier
+		VkImageMemoryBarrier barrier{};
+		barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+		barrier.srcAccessMask = 0; // No source access needed
+		barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+		barrier.oldLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+		barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		barrier.image = image;
+		barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		barrier.subresourceRange.baseMipLevel = 0;
+		barrier.subresourceRange.levelCount = 1;
+		barrier.subresourceRange.baseArrayLayer = 0;
+		barrier.subresourceRange.layerCount = 1;
+
+		// Pipeline stage transition
+		VkPipelineStageFlags srcStageMask = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+		VkPipelineStageFlags dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+
+		vkCmdPipelineBarrier(
+			cmdBuf,
+			srcStageMask, dstStageMask,
+			0,
+			0, nullptr,
+			0, nullptr,
+			1, &barrier
+		);
+
+		endSingleTimeCommands(RenderDevice, cmdPool, &cmdBuf);
+		vkResetFences(RenderDevice->getLogicalDevice(), 1, &transitionFence);
+
+		return true;
 	}
 }

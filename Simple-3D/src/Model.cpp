@@ -1,7 +1,6 @@
 #include "Component/Renderable/Model.h"
 
 
-
 namespace Simple3D {
 
     Model::Model(std::vector<Vertex> verticies, std::vector<uint32_t> indices)
@@ -103,9 +102,10 @@ namespace Simple3D {
     }
 
 
-    void Model::SetTransform(glm::mat4 n_transform) {
+    void Model::SetTransform(const glm::mat4 n_transform) {
           transform = n_transform;
     }
+
 
     bool Model::hasBuffer() {
         return BufferEnabled;
@@ -115,7 +115,7 @@ namespace Simple3D {
         return Verticies;
     }
 
-    glm::mat4 Model::GetTransform() {
+    const glm::mat4 Model::GetTransform() {
         return transform;
     }
 } 

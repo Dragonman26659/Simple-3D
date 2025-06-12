@@ -4,15 +4,13 @@
 
 namespace Simple3D {
 
-    Material::Material(Device* device, VkCommandPool* commandPool,
-        std::string vertex, std::string Fragment,
-        std::vector<std::string> textureNames, bool isLit)
+    Material::Material(Device* device, VkCommandPool* commandPool, std::string vertex, std::string Fragment, std::unordered_map<std::string, std::string> texture_files, bool isLit)
         : r_device(device), r_commandPool(commandPool)
         , vertexSource(vertex), FragmentSource(Fragment), isLit(isLit)
     {
         // Create a TextureBinding for each texture name
-        for (const auto& name : textureNames) {
-            textures[name] = CreateTexture(name);
+        for (const auto& name : texture_files) {
+            textures[name.first] = CreateTexture(name.second);
         }
     }
 
@@ -81,7 +79,7 @@ namespace Simple3D {
 
         // Create image view and sampler
         binding.view = createImageView(binding.textureImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT, r_device);
-        createTextureSampler(&binding);
+        createTextureSampler(&binding, r_device);
 
 
 
@@ -96,43 +94,5 @@ namespace Simple3D {
         vkDestroyImageView(r_device->getLogicalDevice(), binding.view, nullptr);
 
 
-    }
-
-
-    void Material::createTextureSampler(TextureBinding* binding) {
-        VkPhysicalDeviceProperties properties{};
-        vkGetPhysicalDeviceProperties(r_device->getPhysicalDevice(), &properties);
-
-
-
-        VkSamplerCreateInfo samplerInfo{};
-        samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-        samplerInfo.magFilter = VK_FILTER_LINEAR;
-        samplerInfo.minFilter = VK_FILTER_LINEAR;
-
-        samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-        samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-        samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-
-        samplerInfo.anisotropyEnable = VK_TRUE;
-        samplerInfo.maxAnisotropy = properties.limits.maxSamplerAnisotropy;
-        samplerInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
-        samplerInfo.unnormalizedCoordinates = VK_FALSE;
-
-
-        samplerInfo.compareEnable = VK_FALSE;
-        samplerInfo.compareOp = VK_COMPARE_OP_ALWAYS;
-
-
-        samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-        samplerInfo.mipLodBias = 0.0f;
-        samplerInfo.minLod = 0.0f;
-        samplerInfo.maxLod = 0.0f;
-
-
-
-        if (vkCreateSampler(r_device->getLogicalDevice(), &samplerInfo, nullptr, &binding->sampler) != VK_SUCCESS) {
-            throw std::runtime_error("failed to create texture sampler!");
-        }
     }
 }

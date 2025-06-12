@@ -9,6 +9,8 @@ layout(binding = 0) uniform UniformBufferObject {
     mat4 model;
     mat4 view;
     mat4 proj;
+
+    uint32_t ModelID;
 } ubo;
 
 layout(location = 0) out vec3 fragColor;      // Declare output color

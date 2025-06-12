@@ -235,7 +235,7 @@ int main() {
     Simple3D::MaterialInfo info;
     info.FragmentSource = "shaders/frag.spv";
     info.vertexSource = "shaders/vert.spv";
-    info.textures.push_back("textures/albeado_viking_room.png");
+    info.textures["Albeado"] = ("textures/albeado_viking_room.png");
     info.isLit = false;
 
 
@@ -277,6 +277,8 @@ int main() {
         // Only bother rendering imgui if the window is actuale able to draw
         if (renderer->NewImguiframe()) {
             ImGui::ShowDemoWindow();
+
+            ImGui::Render();
         }
 #endif // USEIMGUI
 

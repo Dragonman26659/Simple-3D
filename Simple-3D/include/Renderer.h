@@ -170,12 +170,13 @@ namespace Simple3D {
 
 		void Render();
 		void WaitToFinish();
-
+		void WindoResize();
 
 		// In header due to links with preprossessor
 		void RecreateSwapChain();
 
 		Material* CreateMaterial(MaterialInfo info);
+		TextureBinding CreateTexture(std::string filepath);
 
 
 		void SumbitModelToFrame(Model* model, RenderInstance* instance);
@@ -183,13 +184,15 @@ namespace Simple3D {
 		void SubmitLightToFrame(Light& light, RenderInstance* instance);
 
 		RenderInstance* CreateRenderInstance();
-		RenderInstance* CreateRenderInstance(RenderTexture texture);
+		RenderInstance* CreateRenderInstance(RenderTexture* texture);
+
+		RenderTexture* CreateRenderTexture();
 		void DestroyAllRenderInstances();
 
 
 #ifdef USEIMGUI
 		// Returns all needed information to be able to use Imgui
-		ImGui_ImplVulkan_InitInfo Renderer::GetImGUIinfo() {
+		ImGui_ImplVulkan_InitInfo GetImGUIinfo() {
 			ImGui_ImplVulkan_InitInfo info = {};
 
 			// Create separate pool for ImGui
@@ -272,8 +275,6 @@ namespace Simple3D {
 				return;
 			}
 
-			// 4. Render and get draw data
-			ImGui::Render();
 			ImDrawData* draw_data = ImGui::GetDrawData();
 			if (draw_data == nullptr) {
 				// Log warning: No draw data to render
@@ -289,7 +290,7 @@ namespace Simple3D {
 			}
 		}
 
-		void initImgui() {
+		void initImgui(std::function<void(ImGuiStyle&)> styleConfig = nullptr) {
 			// 1. Create ImGui context
 			IMGUI_CHECKVERSION();
 			ImGui::CreateContext();
@@ -314,6 +315,15 @@ namespace Simple3D {
 			init_info.MinImageCount = swapChain->getImageViews().size();
 			init_info.ImageCount = init_info.MinImageCount;
 			init_info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
+
+			// Apply custom style configuration if provided
+			if (styleConfig != nullptr) {
+				styleConfig(ImGui::GetStyle());
+			}
+			else {
+				// Default style configuration
+				ImGui::StyleColorsDark();
+			}
 
 			// Initialize Vulkan backend
 			ImGui_ImplVulkan_Init(&init_info);
@@ -376,6 +386,8 @@ namespace Simple3D {
 
 		// Models and lights
 		std::vector<RenderInstance*> RenderInstances;
+		std::vector<RenderTexture*> RenderTextures;
+		
 
 
 #ifdef USEIMGUI
