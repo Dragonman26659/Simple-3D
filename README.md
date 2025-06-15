@@ -2,26 +2,24 @@ Simple3D Engine
 Simple3D is a lightweight 3D rendering API built on top of Vulkan with SDL2 integration and optional ImGui support. It abstracts away low-level Vulkan complexity, enabling quick prototyping of 3D applications with camera controls, lighting, materials, and real-time rendering.
 
 🚀 Features
-Vulkan-based renderer
+  Vulkan-based renderer
 
-SDL2 window/input support
+  SDL2 window/input support
 
-First-person camera control
+  First-person camera control
 
-Model rendering with materials
+  Model rendering with materials
 
-Basic lighting (directional, shadow toggle)
+  Basic lighting (directional, shadow toggle)
 
-Optional ImGui integration
+  Optional ImGui integration
 
-Shader and texture binding system
+  Shader and texture binding system
 
 🛠️ Basic Example
 This is a minimal example of how to use the Simple3D API.
 
-cpp
-Copy
-Edit
+```
 // Create a Vulkan-backed renderer with SDL
 Simple3D::Renderer* renderer = new Simple3D::Renderer(window, "Engine Name", "App Name");
 
@@ -56,67 +54,64 @@ model->BindMaterial(material);
 
 // Submit model to render frame
 renderer->SumbitModelToFrame(model, instance);
+```
 🔧 Note: In the above example, model is assumed to be an instance of Simple3D::Model. How it’s loaded (e.g., via tinyobjloader) is up to the application developer and not part of the Simple3D API itself.
 
 🎮 Camera Controller
-While not part of the Simple3D API, the example project includes a basic FPS-style camera controller built using SDL keyboard and mouse input:
+  While not part of the Simple3D API, the example project includes a basic FPS-style camera controller built using SDL keyboard and mouse input:
 
-cpp
-Copy
-Edit
+```
 FPSCameraController cameraController(*camera);
-
 cameraController.handleEvent(event, deltaTime);
-This manages WASD movement, mouse look, and jump/crouch.
+```
+  This manages WASD movement, mouse look, and jump/crouch.
 
 🧱 API Components
 ✅ Renderer
-Manages Vulkan initialization, window drawing, and scene submission.
+  Manages Vulkan initialization, window drawing, and scene submission.
 
 ✅ Camera
-Supports perspective and orthographic modes, position, rotation, and lookAt() behavior.
+  Supports perspective and orthographic modes, position, rotation, and lookAt() behavior.
 
 ✅ Model
-User-defined geometry, optionally textured and shaded.
+  User-defined geometry, optionally textured and shaded.
 
 ✅ Material
-Binds SPIR-V shaders and texture maps to models.
+  Binds SPIR-V shaders and texture maps to models.
 
 ✅ Light
-Supports directional lighting, color, intensity, and shadow flags.
+  Supports directional lighting, color, intensity, and shadow flags.
 
 📦 Dependencies
-Vulkan SDK
+  Vulkan SDK
 
-SDL2
+  SDL2
 
-GLM
+  GLM
 
-(Optional) ImGui
-
-(Optional in your app) tinyobjloader, etc.
+  (Optional) ImGui
 
 📁 Example Project
-An example usage file (SDL-Example/src/main.cpp) is provided in the repository to demonstrate:
+  An example usage file (SDL-Example/src/main.cpp) is provided in the repository to demonstrate:
 
-Initializing SDL + Vulkan
+  Initializing SDL + Vulkan
 
-Loading an OBJ file (via custom utility)
+  Loading an OBJ file (via custom utility)
 
-Using FPS-style input (via a custom class)
+  Using FPS-style input (via a custom class)
 
-Submitting camera, light, and model to renderer
+  Submitting camera, light, and model to renderer
 
-📝 Note: loadModel() and similar helpers are part of the example, not the API.
+  📝 Note: loadModel() and similar helpers are part of the example, not the API.
 
 🧑‍💻 License
-MIT (shown in License file)
+  MIT (shown in License file)
 
 🤝 Acknowledgements
-SDL2
+  SDL2
 
-Vulkan
+  Vulkan
 
-GLM
+  GLM
 
-Dear ImGui
+  Dear ImGui
