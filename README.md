@@ -16,6 +16,35 @@ Simple3D is a lightweight 3D rendering API built on top of Vulkan with SDL2 inte
 
   Shader and texture binding system
 
+
+
+🛠️ Setup Instructions
+Clone the repository
+
+```
+git clone https://github.com/yourusername/Simple3D.git
+cd Simple3D
+```
+Install Premake5 (EXE included inside repo)
+
+
+Make sure it's available in your system path.
+
+Run Premake with desired options
+```
+--use-sdl	      Use SDL instead of GLFW
+--use-imgui	    Enable ImGui support
+```
+
+```
+premake5 vs2022 --use-sdl --use-imgui
+```
+This will generate Visual Studio 2022 solution files with SDL and ImGui enabled.
+
+
+
+
+
 🛠️ Basic Example
 This is a minimal example of how to use the Simple3D API.
 
