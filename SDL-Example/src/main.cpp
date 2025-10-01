@@ -31,13 +31,10 @@ public:
     FPSCameraController(Simple3D::Camera& cam) : camera(cam) {}
 
     void handleInput(float deltatime) {
-        const Uint8* key_state = SDL_GetKeyboardState(nullptr);
 
-        // Check for escape key to unlock mouse
-        if (key_state[SDL_SCANCODE_ESCAPE]) {
-            SDL_SetRelativeMouseMode(SDL_FALSE);
-            mouseLocked = false;
-        }
+        if (!mouseLocked) return;
+
+        const Uint8* key_state = SDL_GetKeyboardState(nullptr);
 
         // Get current position and rotation
         glm::vec3 pos = camera.getPosition();
@@ -84,9 +81,16 @@ public:
             int mouseX, mouseY;
             SDL_GetMouseState(&mouseX, &mouseY);
 
-            if (!mouseLocked) {
-                SDL_SetRelativeMouseMode(SDL_TRUE);
+
+            // Check if right click pressed - if so then enable mouseLocked
+            if (SDL_GetMouseState(nullptr, nullptr) & SDL_BUTTON(SDL_BUTTON_RIGHT)) {
                 mouseLocked = true;
+                SDL_SetRelativeMouseMode(SDL_TRUE);
+            }
+            else {
+                mouseLocked = false;
+                SDL_SetRelativeMouseMode(SDL_FALSE);
+                return;
             }
 
             glm::vec2 currentMousePos(mouseX, mouseY);
@@ -296,7 +300,7 @@ int main() {
             if (event.type == SDL_QUIT) {
                 running = false;
             }
-            //cameraController.handleEvent(event, deltaTime);
+            cameraController.handleEvent(event, deltaTime);
             ImGui_ImplSDL2_ProcessEvent(&event);
         }
 
@@ -310,17 +314,8 @@ int main() {
         if (renderer->NewImguiframe()) {
             ImGui::Begin("Test view");
 
-            // Get available space in the window
-            ImVec2 viewportPanelSize = ImGui::GetContentRegionAvail();
-
-            // Check if texture needs resizing
-            if (ImguiTexture && (ImguiTexture->width != viewportPanelSize.x ||
-                ImguiTexture->height != viewportPanelSize.y)) {
-                ImguiTexture->resize(static_cast<uint32_t>(viewportPanelSize.x), static_cast<uint32_t>(viewportPanelSize.y));
-            }
-
             // Display the texture
-            ImGui::Image((ImTextureID)ImguiDiscriptor, viewportPanelSize);
+            ImGui::Image((ImTextureID)ImguiDiscriptor, { (float)ImguiTexture->width, (float)ImguiTexture->height});
 
 
 

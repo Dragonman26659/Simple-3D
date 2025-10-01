@@ -209,20 +209,28 @@ namespace Simple3D {
 		width, height = nwidth, nheight;
 		cleanup();
 
-		createRenderPassForImageView();
-		createImageForImageView();
-		createImageView();
-		createFramebufferForImageView(width, height);
-
-
-		if (binding != nullptr) {
-			binding->view = imageView;
-			binding->textureImage = image;
-			binding->textureImageMemory = imageMemory;
+		if (width <= 0 || height <= 0) {
+			throw std::runtime_error("Invalid texture dimensions");
 		}
 
+		// 1. Initialize state first
+		currentState.layout = VK_IMAGE_LAYOUT_UNDEFINED;
+		currentState.owningQueueFamily = VK_QUEUE_FAMILY_IGNORED;
+		currentState.lastTransitionFence = VK_NULL_HANDLE;
 
-		createTextureSampler(binding, RenderDevice);
+
+		// 2. Create image and view
+		createImageForImageView();
+		createImageView();
+
+		// 3. Create render pass
+		createRenderPassForImageView();
+
+		// 4. Create framebuffer
+		createFramebufferForImageView(width, height);
+
+		// 5. Initialize transition resources
+		setupTransitionResources();
 
 
 		return true;
