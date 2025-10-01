@@ -210,12 +210,40 @@ int main() {
     // Create Objects
     Simple3D::Renderer* renderer = new Simple3D::Renderer(window, "No engine", "SDL Example");
     Simple3D::Model* myModel = loadModel("Viking_room.obj");
-    Simple3D::Light* myLight = new Simple3D::Light;
+    Simple3D::Light* myLight = new Simple3D::Light();
 
     Simple3D::RenderInstance* mainInstance = renderer->CreateRenderInstance();    
 
+
+    // Setup camera
+    Simple3D::Camera* mainCam = new Simple3D::Camera();
+    FPSCameraController cameraController(*mainCam);
+
 #ifdef USEIMGUI
     renderer->initImgui();
+
+    Simple3D::RenderTexture* ImguiTexture;
+    Simple3D::TextureBinding* ImguiBinding;
+    VkDescriptorSet ImguiDiscriptor;
+    Simple3D::RenderInstance* ImguiInstance;
+
+
+    // Test render to texture
+    ImguiTexture = renderer->CreateRenderTexture(640, 480);
+
+    // Setup the instances
+    ImguiInstance = renderer->CreateRenderInstance(ImguiTexture);
+    ImguiInstance->SetCamera(mainCam);
+
+
+
+    ImguiBinding = ImguiTexture->getBinding();
+
+    ImguiDiscriptor = ImGui_ImplVulkan_AddTexture(
+        ImguiBinding->sampler,
+        ImguiBinding->view,
+        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+    );
 #endif // USEIMGUI
 
 
@@ -224,12 +252,6 @@ int main() {
     myLight->diffuseColor = glm::vec3(1.0f, 1.0f, 1.0f);
     myLight->ambientColor = glm::vec3(1.0f, 1.0f, 1.0f);
     myLight->position = glm::vec3(0.0f, 0.0f, 2.0f);
-
-
-
-    // Setup camera
-    Simple3D::Camera* mainCam = new Simple3D::Camera();
-    FPSCameraController cameraController(*mainCam);
 
     // Setup Materials for all models
     Simple3D::MaterialInfo info;
@@ -252,6 +274,10 @@ int main() {
 
     renderer->SubmitMainCamera(mainCam, mainInstance);
 
+
+
+
+
     // Main loop
     bool running = true;
     SDL_Event event;
@@ -270,13 +296,35 @@ int main() {
             if (event.type == SDL_QUIT) {
                 running = false;
             }
-            cameraController.handleEvent(event, deltaTime);
+            //cameraController.handleEvent(event, deltaTime);
+            ImGui_ImplSDL2_ProcessEvent(&event);
         }
 
 #ifdef USEIMGUI
+        renderer->SumbitModelToFrame(myModel, ImguiInstance);
+        renderer->SubmitLightToFrame(*myLight, ImguiInstance);
+
+
+
         // Only bother rendering imgui if the window is actuale able to draw
         if (renderer->NewImguiframe()) {
-            ImGui::ShowDemoWindow();
+            ImGui::Begin("Test view");
+
+            // Get available space in the window
+            ImVec2 viewportPanelSize = ImGui::GetContentRegionAvail();
+
+            // Check if texture needs resizing
+            if (ImguiTexture && (ImguiTexture->width != viewportPanelSize.x ||
+                ImguiTexture->height != viewportPanelSize.y)) {
+                ImguiTexture->resize(static_cast<uint32_t>(viewportPanelSize.x), static_cast<uint32_t>(viewportPanelSize.y));
+            }
+
+            // Display the texture
+            ImGui::Image((ImTextureID)ImguiDiscriptor, viewportPanelSize);
+
+
+
+            ImGui::End();
 
             ImGui::Render();
         }

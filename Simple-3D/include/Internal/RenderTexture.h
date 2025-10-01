@@ -1,4 +1,9 @@
 #pragma once
+// Standard library headers
+#include <mutex>
+#include <atomic>
+#include <stdexcept>
+
 #include "SimpleCore.h"
 #include "Tools.h"
 #include "Internal/Device.h"
@@ -17,11 +22,9 @@ namespace Simple3D {
 		VkRenderPass renderPass;
 
 		Device* RenderDevice;
-		SwapChain* swapChain;
+		VkFormat format;
 
 		TextureBinding* binding = nullptr;
-
-		VkFence transitionFence = VK_NULL_HANDLE;
 
 
 		// Create image view
@@ -39,23 +42,39 @@ namespace Simple3D {
 			// Create fence for synchronization
 			VkFenceCreateInfo fenceInfo{};
 			fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-			vkCreateFence(RenderDevice->getLogicalDevice(), &fenceInfo, nullptr, &transitionFence);
+			currentState.owningQueueFamily = VK_QUEUE_FAMILY_IGNORED;
+			vkCreateFence(RenderDevice->getLogicalDevice(), &fenceInfo, nullptr, &currentState.lastTransitionFence);
+			vkResetFences(RenderDevice->getLogicalDevice(), 1, &currentState.lastTransitionFence);
 		}
+
+	public:
+		struct ImageState {
+			VkImageLayout layout;
+			uint32_t owningQueueFamily;
+			VkFence lastTransitionFence;
+		};
+
+		ImageState currentState;
+		std::mutex stateMutex;
+		std::atomic<bool> isTransitioning = false;
 
 		int width, height;
 
-	public:
-		RenderTexture(Device* RenderDevice, SwapChain* swapChain);
+
+
+		RenderTexture(Device* RenderDevice, int width, int height, VkFormat format);
 		RenderTexture();
 		~RenderTexture();
 		void cleanup();
 		bool resize(int width, int height);
+		VkExtent2D getExtent();
 
 
 		TextureBinding* getBinding();
 
-		bool transitionToPresentSrcKHR(VkCommandPool* cmdPool);
-		bool transitionToShaderReadOptimal(VkCommandPool* cmdPool);
+		bool TransitionForWrite(VkCommandBuffer cmdBuf, uint32_t targetQueueFamily);
+		bool TransitionForRead(VkCommandBuffer cmdBuf, uint32_t targetQueueFamily);
+		void waitPreviousTransition();
 
 
 		VkImageView GetImageView() { return imageView; }

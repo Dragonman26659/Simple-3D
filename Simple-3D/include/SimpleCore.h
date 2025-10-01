@@ -130,7 +130,7 @@ struct UniformBufferObject {
     glm::mat4 proj;
 
 
-    uint32_t ModelID;
+    //uint32_t ModelID;
 };
 
 

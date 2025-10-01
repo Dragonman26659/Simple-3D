@@ -186,7 +186,7 @@ namespace Simple3D {
 		RenderInstance* CreateRenderInstance();
 		RenderInstance* CreateRenderInstance(RenderTexture* texture);
 
-		RenderTexture* CreateRenderTexture();
+		RenderTexture* CreateRenderTexture(int width, int height);
 		void DestroyAllRenderInstances();
 
 
@@ -327,9 +327,6 @@ namespace Simple3D {
 
 			// Initialize Vulkan backend
 			ImGui_ImplVulkan_Init(&init_info);
-
-			// 5. Create font textures
-			ImGui_ImplVulkan_CreateFontsTexture();
 
 			usingImgui = true;
 		}

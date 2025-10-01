@@ -87,28 +87,6 @@ vec3 getNormal() {
     return normalize(TBN * Nmap);
 }
 
-//––– Shadow-map lookup (3×3 PCF) ––––––––––––––––––––––––––––––––––––––––––––––
-float calcShadow(int idx, vec3 N, vec3 Ldir) {
-    Light L = lights[idx];
-    if (!L.castShadows) return 0.0;
-
-    vec4 proj4 = lightSpace[idx] * vec4(fragPos, 1.0);
-    vec3 proj  = proj4.xyz / proj4.w;
-    if (proj.x < 0.0 || proj.x > 1.0 || proj.y < 0.0 || proj.y > 1.0) 
-        return 0.0;
-
-    float bias     = max(L.shadowBias * (1.0 - dot(N, Ldir)), 0.005);
-    float texelSize= 1.0 / textureSize(shadowMaps[idx], 0).x;
-    float sum      = 0.0;
-    for(int x=-1; x<=1; ++x)
-    for(int y=-1; y<=1; ++y) {
-        vec2 ofs = vec2(x,y)*texelSize;
-        sum += texture(shadowMaps[idx], vec3(proj.xy + ofs, proj.z - bias));
-    }
-    sum /= 9.0;
-    return clamp(sum * L.shadowIntensity, 0.0, 1.0);
-}
-
 //––– Main –––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
 void main() {
     // fetch material
@@ -148,11 +126,8 @@ void main() {
         vec3 kD = (1.0 -kS)*(1.0 -metallic);
         float NdotL = max(dot(N,Ldir), 0.0);
 
-        // shadow factor [0..1]
-        float sh = calcShadow(i, N, Ldir);
-
         // accumulate
-        Lo += (kD * albedo/PI + spec) * radiance * NdotL * (1.0 - sh);
+        Lo += (kD * albedo/PI + spec) * radiance * NdotL;
     }
 
     // ambient + AO + tone‐map + gamma

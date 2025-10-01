@@ -31,16 +31,23 @@ namespace Simple3D {
 
 		// If rendering to an imgui window or not
 		if (RenderToTexture) {
+			// Set texture so we render to it
+			texture->TransitionForWrite(cmd, 0);
+
 			renderPassInfo.framebuffer = texture->getFrameBuffer();
-			renderPassInfo.renderPass = texture->getRenderPass();;
+			renderPassInfo.renderPass = texture->getRenderPass();
+
+			// Use texture dimensions for render area
+			renderPassInfo.renderArea.offset = { 0, 0 };
+			renderPassInfo.renderArea.extent = texture->getExtent();;
 		}
 		else {
 			renderPassInfo.framebuffer = mainFrameBuffer;
 			renderPassInfo.renderPass = renderPass;
-		}
 
-		renderPassInfo.renderArea.offset = { 0, 0 };
-		renderPassInfo.renderArea.extent = swapChain->GetSwapChainExtent();
+			renderPassInfo.renderArea.offset = { 0, 0 };
+			renderPassInfo.renderArea.extent = swapChain->GetSwapChainExtent();
+		}
 		renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
 		renderPassInfo.pClearValues = clearValues.data();
 
@@ -65,8 +72,14 @@ namespace Simple3D {
 			VkViewport viewport{};
 			viewport.x = 0.0f;
 			viewport.y = 0.0f;
-			viewport.width = static_cast<float>(swapChain->GetSwapChainExtent().width);
-			viewport.height = static_cast<float>(swapChain->GetSwapChainExtent().height);
+			if (RenderToTexture) {
+				viewport.width = static_cast<float>(texture->width);
+				viewport.height = static_cast<float>(texture->height);
+			}
+			else {
+				viewport.width = static_cast<float>(swapChain->GetSwapChainExtent().width);
+				viewport.height = static_cast<float>(swapChain->GetSwapChainExtent().height);
+			}
 			viewport.minDepth = 0.0f;
 			viewport.maxDepth = 1.0f;
 			vkCmdSetViewport(cmd, 0, 1, &viewport);
@@ -74,7 +87,14 @@ namespace Simple3D {
 			// Define sissor
 			VkRect2D scissor{};
 			scissor.offset = { 0, 0 };
-			scissor.extent = swapChain->GetSwapChainExtent();
+			if (RenderToTexture) {
+				scissor.extent = texture->getExtent();
+			}
+			else {
+				scissor.extent = swapChain->GetSwapChainExtent();
+			}
+
+
 			vkCmdSetScissor(cmd, 0, 1, &scissor);
 
 			// UPdate with models position and shizzle
@@ -95,6 +115,12 @@ namespace Simple3D {
 
 		// End render pass
 		vkCmdEndRenderPass(cmd);
+
+		// If rendering to an imgui window or not
+		if (RenderToTexture) {
+			// Set texture so we can read from it
+			texture->TransitionForRead(cmd, 0);
+		}
 	}
 
 

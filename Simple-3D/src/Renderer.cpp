@@ -18,11 +18,7 @@ namespace Simple3D {
 
 	// Actual render loop :0
 	void Renderer::Render() {
-
-
-		// Dont render if minimised
 		if (isMinimised()) {
-			// Reset the vectors of models and lights to prevent memory leak
 			for (RenderInstance* instance : RenderInstances) {
 				instance->ClearVectors();
 			}
@@ -30,37 +26,32 @@ namespace Simple3D {
 		}
 
 
-
-
-		// Wait for last frame and reset fences
+		// Wait for last frame to complete
 		vkWaitForFences(RenderDevice->getLogicalDevice(), 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
-
-		uint32_t imageIndex;
-		VkResult result = vkAcquireNextImageKHR(RenderDevice->getLogicalDevice(), swapChain->GetVKSwapchain(), UINT64_MAX, imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE, &imageIndex);
-
-		if (result == VK_ERROR_OUT_OF_DATE_KHR ||
-			result == VK_SUBOPTIMAL_KHR) {
-			WindoResize();
-
-			return;
-		}
-		else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
-			throw std::runtime_error("failed to acquire swap chain image!");
-		}
-
-		// Only reset the fence if we are submitting work
 		vkResetFences(RenderDevice->getLogicalDevice(), 1, &inFlightFences[currentFrame]);
 
-		// Reset and record command buffer
+		uint32_t imageIndex;
+		VkResult result = vkAcquireNextImageKHR(RenderDevice->getLogicalDevice(),
+			swapChain->GetVKSwapchain(),
+			UINT64_MAX,
+			imageAvailableSemaphores[currentFrame],
+			VK_NULL_HANDLE,
+			&imageIndex);
+
+		if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
+			WindoResize();
+			return;
+		}
+		else if (result != VK_SUCCESS) {
+			printf("Simple3D failed to acquire swap chain image!");
+			throw std::runtime_error("Simple3D failed to acquire swap chain image!");
+		}
+
+		// Reset command buffer after fence reset
 		vkResetCommandBuffer(commandBuffers[currentFrame], 0);
-
-
 		recordCommandBuffer(commandBuffers[currentFrame], imageIndex);
 
-
-		// Submit command buffer
-		VkSubmitInfo submitInfo{};
-
+		VkSubmitInfo submitInfo = {};
 		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 
 		VkSemaphore waitSemaphores[] = { imageAvailableSemaphores[currentFrame] };
@@ -76,44 +67,40 @@ namespace Simple3D {
 		submitInfo.signalSemaphoreCount = 1;
 		submitInfo.pSignalSemaphores = signalSemaphores;
 
-		if (vkQueueSubmit(RenderDevice->getVKgraphicsQueue(), 1, &submitInfo, inFlightFences[currentFrame]) != VK_SUCCESS) {
-			//throw std::runtime_error("failed to submit draw command buffer!");
-			return;
+
+		VkResult submitResult = vkQueueSubmit(RenderDevice->getVKgraphicsQueue(), 1, &submitInfo, inFlightFences[currentFrame]);
+
+		if (submitResult != VK_SUCCESS) {
+			std::string errorMessage = "Failed to submit draw command buffer! (Error code: " +
+				std::to_string(submitResult) + ")";
+			
+			printf(errorMessage.c_str());
+			throw std::runtime_error("failed to submit draw command buffer!");
 		}
 
-		VkPresentInfoKHR presentInfo{};
+		// Present
+		VkPresentInfoKHR presentInfo = {};
 		presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-
 		presentInfo.waitSemaphoreCount = 1;
 		presentInfo.pWaitSemaphores = signalSemaphores;
-
-		VkSwapchainKHR swapChains[] = { swapChain->GetVKSwapchain() };
 		presentInfo.swapchainCount = 1;
-		presentInfo.pSwapchains = swapChains;
+		presentInfo.pSwapchains = &swapChain->GetVKSwapchain();
 		presentInfo.pImageIndices = &imageIndex;
-		presentInfo.pResults = nullptr; // Technically not needed but who cares
 
 		result = vkQueuePresentKHR(RenderDevice->getVKpresentQueue(), &presentInfo);
-
-		if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
+		if (result == VK_ERROR_OUT_OF_DATE_KHR) {
 			RecreateSwapChain();
 		}
 		else if (result != VK_SUCCESS) {
 			throw std::runtime_error("failed to present swap chain image!");
 		}
 
-		// Change current frame
 		currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
-
-
-		// Reset the vectors for Models and lights
-		for (RenderInstance* instance : RenderInstances) {
-			instance->ClearVectors();
-		}
 	}
 
 
 	void Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex) {
+
 		// Begin to record
 		VkCommandBufferBeginInfo beginInfo{};
 		beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -121,9 +108,7 @@ namespace Simple3D {
 		beginInfo.pInheritanceInfo = nullptr; // Optional
 
 
-		for (RenderTexture* tex : RenderTextures) {
-			tex->transitionToPresentSrcKHR(&commandPool);
-		}
+
 
 
 		if (vkBeginCommandBuffer(commandBuffer, &beginInfo) != VK_SUCCESS) {
@@ -148,13 +133,20 @@ namespace Simple3D {
 
 		bool haveRendered = false;
 
-		// Reset the vectors for Models and lights
-		for (RenderInstance* instance : RenderInstances) {
-			instance->recordCommandBuffer(commandBuffer, imageIndex, commandPool, currentFrame, swapChainFramebuffers[imageIndex]);
 
-			if (!instance->RenderToTexture) {
-				haveRendered = true;
+
+		// Render All Render to texture instances
+		for (RenderInstance* instance : RenderInstances) {
+			if (instance->RenderToTexture) {
+				instance->recordCommandBuffer(commandBuffer, imageIndex, commandPool, currentFrame, swapChainFramebuffers[imageIndex]);
 			}
+		}
+		// Render normal renderinstances
+		for (RenderInstance* instance : RenderInstances) {
+			if (!instance->RenderToTexture) {
+				instance->recordCommandBuffer(commandBuffer, imageIndex, commandPool, currentFrame, swapChainFramebuffers[imageIndex]);
+			}
+			haveRendered = true;
 		}
 
 		if (!haveRendered) {
@@ -179,37 +171,34 @@ namespace Simple3D {
 
 #ifdef USEIMGUI
 		if (usingImgui) {
-			// Add proper image barrier
-			VkImageMemoryBarrier barrier{};
-			barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-			barrier.image = swapChain->getImages()[imageIndex];
-			barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-			barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-			barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-			barrier.subresourceRange.baseMipLevel = 0;
-			barrier.subresourceRange.levelCount = 1;
-			barrier.subresourceRange.baseArrayLayer = 0;
-			barrier.subresourceRange.layerCount = 1;
-			barrier.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-			barrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-			barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-			barrier.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT;
+			// First barrier: Transition to SHADER_READ_ONLY_OPTIMAL
+			VkImageMemoryBarrier barrier1{};
+			barrier1.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+			barrier1.image = swapChain->getImages()[imageIndex];
+			barrier1.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+			barrier1.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+			barrier1.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+			barrier1.subresourceRange.baseMipLevel = 0;
+			barrier1.subresourceRange.levelCount = 1;
+			barrier1.subresourceRange.baseArrayLayer = 0;
+			barrier1.subresourceRange.layerCount = 1;
+			barrier1.oldLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+			barrier1.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+			barrier1.srcAccessMask = VK_ACCESS_MEMORY_READ_BIT;
+			barrier1.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
 
-			// Add proper pipeline stages for synchronization
-			VkPipelineStageFlags srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-			VkPipelineStageFlags dstStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+			VkPipelineStageFlags srcStageMask1 = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+			VkPipelineStageFlags dstStageMask1 = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
 
-			vkCmdPipelineBarrier(
-				commandBuffer,
-				srcStageMask,
-				dstStageMask,
+			vkCmdPipelineBarrier(commandBuffer,
+				srcStageMask1,
+				dstStageMask1,
 				0,
 				0, nullptr,
 				0, nullptr,
-				1, &barrier
-			);
+				1, &barrier1);
 
-			// Get render pass and its information
+			// Begin imgui render pass
 			VkRenderPassBeginInfo renderPassInfo{};
 			renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
 			renderPassInfo.renderPass = ClearRenderPass;
@@ -219,29 +208,36 @@ namespace Simple3D {
 			renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
 			renderPassInfo.pClearValues = clearValues.data();
 
-			// Begin imgui render pass
+			// Second barrier: Transition to PRESENT_SRC_KHR after imgui
+			VkImageMemoryBarrier barrier2{};
+			barrier2.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+			barrier2.image = swapChain->getImages()[imageIndex];
+			barrier2.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+			barrier2.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+			barrier2.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+			barrier2.subresourceRange.baseMipLevel = 0;
+			barrier2.subresourceRange.levelCount = 1;
+			barrier2.subresourceRange.baseArrayLayer = 0;
+			barrier2.subresourceRange.layerCount = 1;
+			barrier2.oldLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+			barrier2.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+			barrier2.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+			barrier2.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT;
+
 			vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
-
-			// Add proper viewport setup
-			VkViewport viewport = {};
-			viewport.x = 0.0f;
-			viewport.y = 0.0f;
-			viewport.width = static_cast<float>(swapChain->GetSwapChainExtent().width);
-			viewport.height = static_cast<float>(swapChain->GetSwapChainExtent().height);
-			viewport.minDepth = 0.0f;
-			viewport.maxDepth = 1.0f;
-			vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
-
-			// Add proper scissor
-			VkRect2D scissor = {};
-			scissor.offset = { 0, 0 };
-			scissor.extent = swapChain->GetSwapChainExtent();
-			vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
-
 			drawImgui(commandBuffer, imageIndex);
-
-			// End imgui render pass
 			vkCmdEndRenderPass(commandBuffer);
+
+			VkPipelineStageFlags srcStageMask2 = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+			VkPipelineStageFlags dstStageMask2 = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+
+			vkCmdPipelineBarrier(commandBuffer,
+				srcStageMask2,
+				dstStageMask2,
+				0,
+				0, nullptr,
+				0, nullptr,
+				1, &barrier2);
 		}
 #endif // USEIMGUI
 
@@ -249,11 +245,6 @@ namespace Simple3D {
 		if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
 			printf("failed to record command buffer!");
 			throw std::runtime_error("failed to record command buffer!");
-		}
-
-
-		for (RenderTexture* tex : RenderTextures) {
-			tex->transitionToShaderReadOptimal(&commandPool);
 		}
 	}
 
@@ -306,8 +297,8 @@ namespace Simple3D {
 	}
 
 
-	RenderTexture* Renderer::CreateRenderTexture() {
-		RenderTexture* texture = new RenderTexture(RenderDevice, swapChain);
+	RenderTexture* Renderer::CreateRenderTexture(int width, int height) {
+		RenderTexture* texture = new RenderTexture(RenderDevice, width, height, swapChain->GetSwapChainImageFormat());
 		RenderTextures.push_back(texture);
 		return texture;
 	}
@@ -363,7 +354,6 @@ namespace Simple3D {
 		// Wait for GPU to finish all operations
 		vkDeviceWaitIdle(RenderDevice->getLogicalDevice());
 
-
 #ifdef USEIMGUI
 		if (usingImgui) {
 			// Delete Imgui
@@ -375,15 +365,7 @@ namespace Simple3D {
 #endif
 			ImGui::DestroyContext();
 		}
-
 #endif // USEIMGUI
-
-
-
-		// Reset the vectors for Models and lights
-		for (RenderInstance* instance : RenderInstances) {
-			delete instance;
-		}
 
 		// Cleanup synchronization objects
 		for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
@@ -422,7 +404,6 @@ namespace Simple3D {
 		// Cleanup instance
 		vkDestroyInstance(instance, nullptr);
 	}
-
 	void Renderer::CreateInstance(std::string EngineName, std::string ApplicationName) {
 		// Store strings locally to ensure lifetime
 		std::string engineStr = EngineName;
@@ -608,7 +589,7 @@ namespace Simple3D {
 
 		VkAttachmentDescription depthAttachmentClear = depthAttachment;
 		depthAttachmentClear.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
-		depthAttachmentClear.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+		depthAttachmentClear.initialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 		depthAttachmentClear.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
 		attachments = { colorAttachmentClear, depthAttachmentClear };

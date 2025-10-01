@@ -2,15 +2,30 @@
 
 
 namespace Simple3D {
-	RenderTexture::RenderTexture(Device* RenderDevice, SwapChain* swapChain)
-		: RenderDevice(RenderDevice), swapChain(swapChain) {
+	RenderTexture::RenderTexture(Device* RenderDevice, int width, int height, VkFormat format)
+		: RenderDevice(RenderDevice), width(width), height(height), format(format) {
 
-		createRenderPassForImageView();
+		if (width <= 0 || height <= 0) {
+			throw std::runtime_error("Invalid texture dimensions");
+		}
+
+		// 1. Initialize state first
+		currentState.layout = VK_IMAGE_LAYOUT_UNDEFINED;
+		currentState.owningQueueFamily = VK_QUEUE_FAMILY_IGNORED;
+		currentState.lastTransitionFence = VK_NULL_HANDLE;
+		
+
+		// 2. Create image and view
 		createImageForImageView();
 		createImageView();
-		createFramebufferForImageView(swapChain->GetSwapChainExtent().width, swapChain->GetSwapChainExtent().height);
-		width = swapChain->GetSwapChainExtent().width;
-		height = swapChain->GetSwapChainExtent().height;
+
+		// 3. Create render pass
+		createRenderPassForImageView();
+
+		// 4. Create framebuffer
+		createFramebufferForImageView(width, height);
+
+		// 5. Initialize transition resources
 		setupTransitionResources();
 	}
 
@@ -27,13 +42,20 @@ namespace Simple3D {
 
 
 	void RenderTexture::createImageView() {
+		// First bind memory to the image if it hasn't been bound yet
+		VkMemoryRequirements memRequirements;
+		vkGetImageMemoryRequirements(RenderDevice->getLogicalDevice(), image, &memRequirements);
+		if (imageMemory != VK_NULL_HANDLE &&
+			memRequirements.size > 0) {
+			vkBindImageMemory(RenderDevice->getLogicalDevice(), image, imageMemory, 0);
+		}
 
 		// Setup image view creation info
 		VkImageViewCreateInfo createInfo = {};
 		createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
 		createInfo.image = image;
 		createInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-		createInfo.format = swapChain->GetSwapChainImageFormat();
+		createInfo.format = format;
 
 		// Set up component mapping (swizzling)
 		createInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
@@ -59,17 +81,19 @@ namespace Simple3D {
 		VkImageCreateInfo imageInfo = {};
 		imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
 		imageInfo.imageType = VK_IMAGE_TYPE_2D;
-		imageInfo.format = swapChain->GetSwapChainImageFormat();
-		imageInfo.extent = { swapChain->GetSwapChainExtent().width,
-							swapChain->GetSwapChainExtent().height, 1 };
+		imageInfo.format = format;
+		imageInfo.extent = { (unsigned int)width, (unsigned int)height, 1 };
 		imageInfo.mipLevels = 1;
 		imageInfo.arrayLayers = 1;
 		imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
 		imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
 		imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-		imageInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
-			VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT |
-			VK_IMAGE_USAGE_SAMPLED_BIT;
+
+		
+		imageInfo.usage =	VK_IMAGE_USAGE_SAMPLED_BIT |
+							VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
+							VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT |
+							VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 
 		if (vkCreateImage(RenderDevice->getLogicalDevice(), &imageInfo, nullptr, &image) != VK_SUCCESS) {
 			throw std::runtime_error("failed to create image!");
@@ -88,8 +112,7 @@ namespace Simple3D {
 			throw std::runtime_error("failed to allocate image memory!");
 		}
 
-		// Bind memory to image
-		vkBindImageMemory(RenderDevice->getLogicalDevice(), image, imageMemory, 0);
+		currentState.layout = VK_IMAGE_LAYOUT_UNDEFINED;
 	}
 
 	void RenderTexture::createFramebufferForImageView(int width_n, int height_n) {
@@ -123,7 +146,7 @@ namespace Simple3D {
 
 	void RenderTexture::createRenderPassForImageView() {
 		VkAttachmentDescription attachment{};
-		attachment.format = swapChain->GetSwapChainImageFormat();
+		attachment.format = format;
 		attachment.samples = VK_SAMPLE_COUNT_1_BIT;
 		attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
 		attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
@@ -182,7 +205,8 @@ namespace Simple3D {
 		imageMemory = VK_NULL_HANDLE;
 	}
 
-	bool RenderTexture::resize(int width, int height) {
+	bool RenderTexture::resize(int nwidth, int nheight) {
+		width, height = nwidth, nheight;
 		cleanup();
 
 		createRenderPassForImageView();
@@ -204,17 +228,65 @@ namespace Simple3D {
 		return true;
 	}
 
-	bool RenderTexture::transitionToPresentSrcKHR(VkCommandPool* cmdPool) {
-		VkCommandBuffer cmdBuf = beginSingleTimeCommands(RenderDevice, cmdPool);
+	bool RenderTexture::TransitionForWrite(VkCommandBuffer cmdBuf, uint32_t targetQueueFamily) {
+		std::lock_guard<std::mutex> lock(stateMutex);
 
-		VkImageMemoryBarrier barrier{};
+		if (isTransitioning.exchange(true)) {
+			throw std::runtime_error("Previous transition still in progress");
+		}
+
+		waitPreviousTransition();
+
+		// Validate current state
+		if (currentState.layout == VK_IMAGE_LAYOUT_UNDEFINED) {
+			// Transition from UNDEFINED to TRANSFER_DST_OPTIMAL
+			VkImageMemoryBarrier barrier = {};
+			barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+			barrier.srcAccessMask = 0; 
+			barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+			barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+			barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+			barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+			barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+			barrier.image = image;
+			barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+			barrier.subresourceRange.baseMipLevel = 0;
+			barrier.subresourceRange.levelCount = 1;
+			barrier.subresourceRange.baseArrayLayer = 0;
+			barrier.subresourceRange.layerCount = 1;
+
+			// Ensure proper pipeline synchronization
+			VkPipelineStageFlags srcStageMask = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+			VkPipelineStageFlags dstStageMask = VK_PIPELINE_STAGE_TRANSFER_BIT;
+
+			vkCmdPipelineBarrier(
+				cmdBuf,
+				srcStageMask,
+				dstStageMask,
+				0,
+				0, nullptr,
+				0, nullptr,
+				1, &barrier);
+
+			currentState.layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+		}
+
+		if (currentState.owningQueueFamily != VK_QUEUE_FAMILY_IGNORED &&
+			currentState.owningQueueFamily != targetQueueFamily) {
+			throw std::runtime_error("Invalid queue family transition");
+		}
+
+		// Create and validate the barrier
+		VkImageMemoryBarrier barrier = {};
 		barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-		barrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;     // Previous shader read access
-		barrier.dstAccessMask = 0;                             // No access needed during present
-		barrier.oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		barrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+		barrier.dstAccessMask = 0;
+
+		barrier.oldLayout = currentState.layout;
 		barrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-		barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+
+		barrier.srcQueueFamilyIndex = currentState.owningQueueFamily;
+		barrier.dstQueueFamilyIndex = targetQueueFamily;
 		barrier.image = image;
 		barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 		barrier.subresourceRange.baseMipLevel = 0;
@@ -222,44 +294,79 @@ namespace Simple3D {
 		barrier.subresourceRange.baseArrayLayer = 0;
 		barrier.subresourceRange.layerCount = 1;
 
-		// Pipeline stage transition
-		VkPipelineStageFlags srcStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-		VkPipelineStageFlags dstStageMask = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-
-		vkCmdPipelineBarrier(
-			cmdBuf,
-			srcStageMask, dstStageMask,
+		vkCmdPipelineBarrier(cmdBuf,
+			VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+			VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
 			0,
 			0, nullptr,
 			0, nullptr,
-			1, &barrier
-		);
+			1, &barrier);
 
-		endSingleTimeCommands(RenderDevice, cmdPool, &cmdBuf);
-		vkResetFences(RenderDevice->getLogicalDevice(), 1, &transitionFence);
+		// Wait with timeout to prevent hanging
+		waitPreviousTransition();
 
+		currentState.layout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+		currentState.owningQueueFamily = targetQueueFamily;
+
+		isTransitioning = false;
 		return true;
 	}
 
-	bool RenderTexture::transitionToShaderReadOptimal(VkCommandPool* cmdPool) {
-		VkCommandBuffer cmdBuf = beginSingleTimeCommands(RenderDevice, cmdPool);
+	bool RenderTexture::TransitionForRead(VkCommandBuffer cmdBuf, uint32_t targetQueueFamily) {
+		std::lock_guard<std::mutex> lock(stateMutex);
 
-		// Begin single-time command buffer
-		VkCommandBufferBeginInfo beginInfo{};
-		beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-		beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+		if (isTransitioning.exchange(true)) {
+			throw std::runtime_error("Previous transition still in progress");
+		}
 
-		vkBeginCommandBuffer(cmdBuf, &beginInfo);
+		waitPreviousTransition();
 
-		// Image barrier
-		VkImageMemoryBarrier barrier{};
+		// Validate current state
+		if (currentState.layout == VK_IMAGE_LAYOUT_UNDEFINED) {
+			// Bind memory to image
+			vkBindImageMemory(RenderDevice->getLogicalDevice(), image, imageMemory, 0);
+
+			// Transition from UNDEFINED to TRANSFER_DST_OPTIMAL
+			VkImageMemoryBarrier barrier = {};
+			barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+			barrier.srcAccessMask = 0;
+			barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+			barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+			barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+			barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+			barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+			barrier.image = image;
+			barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+			barrier.subresourceRange.baseMipLevel = 0;
+			barrier.subresourceRange.levelCount = 1;
+			barrier.subresourceRange.baseArrayLayer = 0;
+			barrier.subresourceRange.layerCount = 1;
+
+			vkCmdPipelineBarrier(cmdBuf,
+				VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+				VK_PIPELINE_STAGE_TRANSFER_BIT,
+				0,
+				0, nullptr,
+				0, nullptr,
+				1, &barrier);
+		}
+
+		if (currentState.owningQueueFamily != VK_QUEUE_FAMILY_IGNORED &&
+			currentState.owningQueueFamily != targetQueueFamily) {
+			throw std::runtime_error("Invalid queue family transition");
+		}
+
+		// Create and validate the barrier
+		VkImageMemoryBarrier barrier = {};
 		barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-		barrier.srcAccessMask = 0; // No source access needed
-		barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-		barrier.oldLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+		barrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+		barrier.dstAccessMask = 0;
+
+		barrier.oldLayout = currentState.layout;
 		barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-		barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+
+		barrier.srcQueueFamilyIndex = currentState.owningQueueFamily;
+		barrier.dstQueueFamilyIndex = targetQueueFamily;
 		barrier.image = image;
 		barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 		barrier.subresourceRange.baseMipLevel = 0;
@@ -267,22 +374,35 @@ namespace Simple3D {
 		barrier.subresourceRange.baseArrayLayer = 0;
 		barrier.subresourceRange.layerCount = 1;
 
-		// Pipeline stage transition
-		VkPipelineStageFlags srcStageMask = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-		VkPipelineStageFlags dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-
-		vkCmdPipelineBarrier(
-			cmdBuf,
-			srcStageMask, dstStageMask,
+		vkCmdPipelineBarrier(cmdBuf,
+			VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+			VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
 			0,
 			0, nullptr,
 			0, nullptr,
-			1, &barrier
-		);
+			1, &barrier);
 
-		endSingleTimeCommands(RenderDevice, cmdPool, &cmdBuf);
-		vkResetFences(RenderDevice->getLogicalDevice(), 1, &transitionFence);
+		// Wait with timeout to prevent hanging
+		waitPreviousTransition();
 
+		currentState.layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		currentState.owningQueueFamily = targetQueueFamily;
+
+		isTransitioning = false;
 		return true;
+	}
+
+	void RenderTexture::waitPreviousTransition() {
+		if (currentState.lastTransitionFence != VK_NULL_HANDLE) {
+			vkWaitForFences(RenderDevice->getLogicalDevice(),
+				1, &currentState.lastTransitionFence,
+				VK_TRUE, 100);
+			vkResetFences(RenderDevice->getLogicalDevice(),
+				1, &currentState.lastTransitionFence);
+		}
+	}
+
+	VkExtent2D RenderTexture::getExtent() {
+		return VkExtent2D{ static_cast<uint32_t>(width), static_cast<uint32_t>(height) };
 	}
 }

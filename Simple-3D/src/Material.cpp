@@ -87,12 +87,9 @@ namespace Simple3D {
     }
 
     void Material::DestroyImage(TextureBinding binding) {
-        vkDestroyImage(r_device->getLogicalDevice(), binding.textureImage, nullptr);
-        vkFreeMemory(r_device->getLogicalDevice(), binding.textureImageMemory, nullptr);
-
         vkDestroySampler(r_device->getLogicalDevice(), binding.sampler, nullptr);
         vkDestroyImageView(r_device->getLogicalDevice(), binding.view, nullptr);
-
-
+        vkFreeMemory(r_device->getLogicalDevice(), binding.textureImageMemory, nullptr);
+        vkDestroyImage(r_device->getLogicalDevice(), binding.textureImage, nullptr);
     }
 }
