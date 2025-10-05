@@ -2,7 +2,6 @@
 
 
 // Change based on how many textures the material has
-#define MAX_TEXTURES 1
 #define MAX_LIGHTS 256
 
 // GPU side (GLSL)
@@ -45,8 +44,10 @@ layout(location = 0) out vec4 outColor;
 
 
 // Texture samplers sorted alphabetically by texture name
-layout(binding = 1) uniform sampler2D textureSamplers[MAX_TEXTURES];
-layout(std140, binding = 2) uniform LightBuffer { Light lights[MAX_LIGHTS]; };
+layout(binding = 1) uniform sampler2D textureSamplers[];
+layout(std430, binding = 2) buffer LightBuffer {
+    Light lights[];
+};
 
 
 

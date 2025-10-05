@@ -86,6 +86,7 @@ namespace Simple3D {
 
         VkPipelineShaderStageCreateInfo shaderStages[] = { vertShaderStageInfo, fragShaderStageInfo };
 
+        // Vertex input state with interleaved attributes
         VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
         vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
 
@@ -219,14 +220,14 @@ namespace Simple3D {
 
         VkDescriptorSetLayoutBinding samplerLayoutBinding{};
         samplerLayoutBinding.binding = 1;
-        samplerLayoutBinding.descriptorCount = 1;
+        samplerLayoutBinding.descriptorCount = static_cast<uint32_t>(material->textures.size());
         samplerLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         samplerLayoutBinding.pImmutableSamplers = nullptr;
         samplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
         VkDescriptorSetLayoutBinding lightLayoutBinding{};
         lightLayoutBinding.binding = 2;
-        lightLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+        lightLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
         lightLayoutBinding.descriptorCount = 1;
         lightLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
         lightLayoutBinding.pImmutableSamplers = nullptr;
@@ -261,12 +262,12 @@ namespace Simple3D {
         if (!material->textures.empty()) {
             poolSizes.push_back({});
             poolSizes.back().type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-            poolSizes.back().descriptorCount = static_cast<uint32_t>(material->textures.size());
+            poolSizes.back().descriptorCount = static_cast<uint32_t>(material->textures.size()) * static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
         }
 
         if (material->isLit) {
             poolSizes.push_back({});
-            poolSizes.back().type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+            poolSizes.back().type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
             poolSizes.back().descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
         }
 
@@ -303,11 +304,14 @@ namespace Simple3D {
             bufferInfo.range = sizeof(UniformBufferObject);
 
             if (!material->textures.empty()) {
-                // Create descriptor writes for textures
+                std::vector<VkWriteDescriptorSet> descriptorWrites;
                 std::vector<VkDescriptorImageInfo> descriptorImageInfos;
-                material->updateSortedTextureNames();  // Ensure names are sorted
 
+
+
+                material->updateSortedTextureNames();
                 descriptorImageInfos.reserve(material->textures.size());
+
                 for (const auto& textureName : material->sortedTextureNames) {
                     const auto& binding = material->textures[textureName];
                     descriptorImageInfos.emplace_back(VkDescriptorImageInfo());
@@ -316,19 +320,23 @@ namespace Simple3D {
                     descriptorImageInfos.back().sampler = binding.sampler;
                 }
 
-                // Update texture descriptors
-                for (size_t j = 0; j < descriptorImageInfos.size(); j++) {
-                    VkWriteDescriptorSet textureWrite{};
-                    textureWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-                    textureWrite.dstSet = descriptorSets[i];
-                    textureWrite.dstBinding = 1;  // Texture binding
-                    textureWrite.dstArrayElement = j;
-                    textureWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-                    textureWrite.descriptorCount = 1;
-                    textureWrite.pImageInfo = &descriptorImageInfos[j];
+                // Single update for all textures
+                VkWriteDescriptorSet textureWrite{};
+                textureWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                textureWrite.dstSet = descriptorSets[i];
+                textureWrite.dstBinding = 1;
+                textureWrite.dstArrayElement = 0;
+                textureWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+                textureWrite.descriptorCount = static_cast<uint32_t>(material->textures.size());
+                textureWrite.pImageInfo = descriptorImageInfos.data();
 
-                    vkUpdateDescriptorSets(s_Device.getLogicalDevice(), 1, &textureWrite, 0, nullptr);
-                }
+                descriptorWrites.push_back(textureWrite);
+
+                // Update descriptors before drawing
+                vkUpdateDescriptorSets(s_Device.getLogicalDevice(),
+                    static_cast<uint32_t>(descriptorWrites.size()),
+                    descriptorWrites.data(),
+                    0, nullptr);
             }
 
             // Create descriptor writes
@@ -364,7 +372,7 @@ namespace Simple3D {
                 lightWrite.dstSet = descriptorSets[i];
                 lightWrite.dstBinding = 2;
                 lightWrite.dstArrayElement = 0;
-                lightWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+                lightWrite.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
                 lightWrite.descriptorCount = 1;
                 lightWrite.pBufferInfo = &lightBufferInfo;
 
@@ -412,11 +420,12 @@ namespace Simple3D {
         }
     }
 
-    void Pipeline::updateUniformBuffer(uint32_t currentImage, glm::mat4 PerspectiveMatrix, glm::mat4 ViewMatrix, glm::mat4 transform) {
+    void Pipeline::updateUniformBuffer(uint32_t currentImage, glm::mat4 PerspectiveMatrix, glm::mat4 ViewMatrix, glm::mat4 transform, glm::vec3 CameraPos) {
         UniformBufferObject ubo{};
         ubo.view = ViewMatrix;
         ubo.proj = PerspectiveMatrix;
         ubo.model = transform;
+        ubo.cameraPos = CameraPos;
 
         memcpy(uniformBuffersMapped[currentImage], &ubo, sizeof(ubo));
     }
@@ -432,7 +441,7 @@ namespace Simple3D {
         lightBuffersSize.resize(MAX_FRAMES_IN_FLIGHT);
 
         for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-            createBuffer(bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+            createBuffer(bufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
                 lightBuffers[i], lightBuffersMemory[i], &s_Device);
 
@@ -468,7 +477,7 @@ namespace Simple3D {
             lightBuffersMapped[currentImage] = nullptr;
 
             // Create new buffer
-            createBuffer(bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+            createBuffer(bufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
                 lightBuffers[currentImage], lightBuffersMemory[currentImage], &s_Device);
 
@@ -492,7 +501,7 @@ namespace Simple3D {
         write.dstSet = descriptorSets[currentImage];
         write.dstBinding = 2;
         write.descriptorCount = 1;
-        write.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+        write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
         write.pBufferInfo = &bufferInfo;
 
         vkUpdateDescriptorSets(s_Device.getLogicalDevice(), 1, &write, 0, nullptr);

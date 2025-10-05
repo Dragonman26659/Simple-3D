@@ -69,6 +69,7 @@ struct Vertex {
     glm::vec3 color;
     glm::vec3 normal;
     glm::vec2 texCoord;
+    glm::vec3 tangent;
 
     static VkVertexInputBindingDescription getBindingDescription() {
         VkVertexInputBindingDescription bindingDescription{};
@@ -79,8 +80,8 @@ struct Vertex {
         return bindingDescription;
     }
 
-    static std::array<VkVertexInputAttributeDescription, 4> getAttributeDescriptions() {
-        std::array<VkVertexInputAttributeDescription, 4> attributeDescriptions{};
+    static std::array<VkVertexInputAttributeDescription, 5> getAttributeDescriptions() {
+        std::array<VkVertexInputAttributeDescription, 5> attributeDescriptions{};
 
         attributeDescriptions[0].binding = 0;
         attributeDescriptions[0].location = 0;
@@ -102,11 +103,16 @@ struct Vertex {
         attributeDescriptions[3].format = VK_FORMAT_R32G32_SFLOAT;
         attributeDescriptions[3].offset = offsetof(Vertex, texCoord);
 
+        attributeDescriptions[4].binding = 0;
+        attributeDescriptions[4].location = 4;
+        attributeDescriptions[4].format = VK_FORMAT_R32G32B32_SFLOAT;
+        attributeDescriptions[4].offset = offsetof(Vertex, tangent);
+
         return attributeDescriptions;
     }
 
     bool operator==(const Vertex& other) const {
-        return pos == other.pos && color == other.color && texCoord == other.texCoord;
+        return pos == other.pos && color == other.color && texCoord == other.texCoord && tangent == other.tangent;
     }
 };
 
@@ -117,7 +123,8 @@ namespace std {
             return ((hash<glm::vec3>()(vertex.pos) ^
                 (hash<glm::vec3>()(vertex.color) << 1)) >> 1) ^
                 (hash<glm::vec2>()(vertex.texCoord) << 1) ^
-                (hash<glm::vec3>()(vertex.normal) << 1);
+                (hash<glm::vec3>()(vertex.normal) << 1) ^
+                (hash<glm::vec3>()(vertex.tangent) << 1);
         }
     };
 }
@@ -128,9 +135,7 @@ struct UniformBufferObject {
     glm::mat4 model;
     glm::mat4 view;
     glm::mat4 proj;
-
-
-    //uint32_t ModelID;
+    glm::vec3 cameraPos;
 };
 
 
@@ -138,7 +143,7 @@ const std::vector<const char*> validationLayers = {
     "VK_LAYER_KHRONOS_validation"
 };
 
-const int MAX_FRAMES_IN_FLIGHT = 2;
+const int MAX_FRAMES_IN_FLIGHT = 3;
 
 
 // Helper function for error messages

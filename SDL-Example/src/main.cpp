@@ -140,18 +140,19 @@ Simple3D::Model* loadModel(std::string MODEL_PATH) {
         throw std::runtime_error(err);
     }
 
+    // Initialize vertices without tangents first
     for (const auto& shape : shapes) {
         for (const auto& index : shape.mesh.indices) {
             Vertex vertex{};
 
-            // Position (unchanged)
+            // Position
             vertex.pos = {
                 attrib.vertices[3 * index.vertex_index + 0],
                 attrib.vertices[3 * index.vertex_index + 1],
                 attrib.vertices[3 * index.vertex_index + 2]
             };
 
-            // Normal (new)
+            // Normal
             if (index.normal_index >= 0) {
                 vertex.normal = {
                     attrib.normals[3 * index.normal_index + 0],
@@ -160,25 +161,57 @@ Simple3D::Model* loadModel(std::string MODEL_PATH) {
                 };
             }
             else {
-                // Handle missing normals
-                vertex.normal = glm::vec3(0.0f, 0.0f, 1.0f); // Default upward-facing normal
+                vertex.normal = glm::vec3(0.0f, 0.0f, 1.0f);
             }
 
-            // Texture coordinates (unchanged)
-            vertex.texCoord = {
-                attrib.texcoords[2 * index.texcoord_index + 0],
-                1.0f - attrib.texcoords[2 * index.texcoord_index + 1]
-            };
+            // Texture coordinates
+            if (index.texcoord_index >= 0) {
+                vertex.texCoord = {
+                    attrib.texcoords[2 * index.texcoord_index + 0],
+                    1.0f - attrib.texcoords[2 * index.texcoord_index + 1]
+                };
+            }
+            else {
+                vertex.texCoord = glm::vec2(0.0f, 0.0f);
+            }
 
-            vertex.color = { 1.0f, 1.0f, 1.0f };
+            // Color: use vertex color if present
+            vertex.color = glm::vec3(1.0f, 1.0f, 1.0f);
 
+            // Push vertex
             if (uniqueVertices.count(vertex) == 0) {
                 uniqueVertices[vertex] = static_cast<uint32_t>(vertices.size());
                 vertices.push_back(vertex);
             }
-
             indices.push_back(uniqueVertices[vertex]);
         }
+    }
+
+    // Calculate tangents per triangle
+    for (size_t i = 0; i < indices.size(); i += 3) {
+        Vertex& v0 = vertices[indices[i + 0]];
+        Vertex& v1 = vertices[indices[i + 1]];
+        Vertex& v2 = vertices[indices[i + 2]];
+
+        glm::vec3 edge1 = v1.pos - v0.pos;
+        glm::vec3 edge2 = v2.pos - v0.pos;
+        glm::vec2 deltaUV1 = v1.texCoord - v0.texCoord;
+        glm::vec2 deltaUV2 = v2.texCoord - v0.texCoord;
+
+        float f = 1.0f / (deltaUV1.x * deltaUV2.y - deltaUV2.x * deltaUV1.y);
+
+        glm::vec3 tangent = f * (deltaUV2.y * edge1 - deltaUV1.y * edge2);
+        tangent = glm::normalize(tangent);
+
+        // Add the same tangent to all three vertices
+        v0.tangent += tangent;
+        v1.tangent += tangent;
+        v2.tangent += tangent;
+    }
+
+    // Normalize all tangents
+    for (auto& vertex : vertices) {
+        vertex.tangent = glm::normalize(vertex.tangent);
     }
 
     return new Simple3D::Model(vertices, indices);
@@ -213,8 +246,6 @@ int main() {
 
     // Create Objects
     Simple3D::Renderer* renderer = new Simple3D::Renderer(window, "No engine", "SDL Example");
-    Simple3D::Model* myModel = loadModel("Viking_room.obj");
-    Simple3D::Light* myLight = new Simple3D::Light();
 
     Simple3D::RenderInstance* mainInstance = renderer->CreateRenderInstance();    
 
@@ -250,6 +281,9 @@ int main() {
     );
 #endif // USEIMGUI
 
+    Simple3D::Model* myModel = loadModel("meteor.obj");
+    Simple3D::Light* myLight = new Simple3D::Light();
+
 
     myLight->type = Simple3D::directional;
     myLight->castShadows = false;
@@ -259,10 +293,12 @@ int main() {
 
     // Setup Materials for all models
     Simple3D::MaterialInfo info;
-    info.FragmentSource = "shaders/frag.spv";
+    info.FragmentSource = "shaders/lit_PBR.spv";
     info.vertexSource = "shaders/vert.spv";
-    info.textures["Albeado"] = ("textures/albeado_viking_room.png");
-    info.isLit = false;
+    info.textures["Albeado"] = ("textures/5382.jpg");
+    info.textures["Normal"] = ("textures/asteroid_normal.jpg");
+    info.textures["Roughness"] = ("textures/asteroid_rough.jpg");
+    info.isLit = true;
 
 
     // Bind material to model and set its postion
@@ -301,7 +337,9 @@ int main() {
                 running = false;
             }
             cameraController.handleEvent(event, deltaTime);
+#ifdef USEIMGUI
             ImGui_ImplSDL2_ProcessEvent(&event);
+#endif // USEIMGUI
         }
 
 #ifdef USEIMGUI

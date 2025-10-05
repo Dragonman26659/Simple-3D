@@ -98,7 +98,7 @@ namespace Simple3D {
 			vkCmdSetScissor(cmd, 0, 1, &scissor);
 
 			// UPdate with models position and shizzle
-			pipeline->updateUniformBuffer(currentFrame, camera->getProjectionMatrix(swapChain->GetSwapChainExtent().width, swapChain->GetSwapChainExtent().height), camera->getViewMatrix(), model->GetTransform());
+			pipeline->updateUniformBuffer(currentFrame, camera->getProjectionMatrix(swapChain->GetSwapChainExtent().width, swapChain->GetSwapChainExtent().height), camera->getViewMatrix(), model->GetTransform(), camera->position);
 			pipeline->updateLights(currentFrame, lights);							 
 
 			VkBuffer vertexBuffers[] = { model->GetVertexBuffer() };

@@ -95,6 +95,14 @@ namespace Simple3D {
 			throw std::runtime_error("failed to present swap chain image!");
 		}
 
+
+		// Render normal renderinstances
+		for (RenderInstance* instance : RenderInstances) {
+			instance->ClearVectors();
+		}
+
+
+
 		currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 	}
 

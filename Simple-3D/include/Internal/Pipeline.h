@@ -23,7 +23,7 @@ namespace Simple3D {
 
 		VkPipeline			GetPipeline();
 		VkPipelineLayout	GetLayout();
-		void				updateUniformBuffer(uint32_t currentImage, glm::mat4 PerspectiveMatrix, glm::mat4 ViewMatrix, glm::mat4 transform);
+		void				updateUniformBuffer(uint32_t currentImage, glm::mat4 PerspectiveMatrix, glm::mat4 ViewMatrix, glm::mat4 transform, glm::vec3 CameraPos);
 		void				updateLights(uint32_t currentImage, const std::vector<Light>& lights);
 
 

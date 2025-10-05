@@ -1,8 +1,6 @@
 #version 450
-// Change based on how many textures the material has
-#define MAX_TEXTURES 5
-#define MAX_LIGHTS 256
 #define PI         3.14159265359
+#define MAX_LIGHTS 256
 
 // GPU side (GLSL)
 struct Light {
@@ -36,21 +34,23 @@ struct Light {
 
 // Input color and texture coordinate
 layout(location = 0) in vec3 fragColor;
-layout(location = 2) in vec2 fragTexCoord;
+layout(location = 2) in vec2 UV;
 layout(location = 1) in vec3 Normal;
 layout(location = 3) in vec3 fragPos;
+layout(location = 4) in vec3 tangent;
+layout(location = 5) in vec3 cameraPos;
 
 layout(location = 0) out vec4 outColor;
 
 
 // Texture samplers sorted alphabetically by texture name
-layout(binding = 1) uniform sampler2D textureSamplers[MAX_TEXTURES];
-layout(std140, binding = 2) uniform LightBuffer { Light lights[MAX_LIGHTS]; };
-layout(binding = 3) uniform sampler2D shadowMaps[MAX_LIGHTS];
+layout(binding = 1) uniform sampler2D textureSamplers[];
+layout(std430, binding = 2) buffer LightBuffer {
+    Light lights[];
+};
+//layout(binding = 3) uniform sampler2D shadowMaps[MAX_LIGHTS]; - Use instanced textures for this
 
 
-//––– Camera ––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
-uniform vec3 cameraPos;
 
 //––– PBR helpers –––––––––––––––––––––––––––––––––––––––––––––––––––––––––
 float DistributionGGX(vec3 N, vec3 H, float rou) {
@@ -80,61 +80,63 @@ vec3 fresnelSchlick(float cosTheta, vec3 F0) {
 }
 
 vec3 getNormal() {
-    vec3 Nmap = texture(textureSamplers[3], UV).xyz*2.0 -1.0;
-    mat3 TBN = mat3(normalize(Tangent),
-                    normalize(Bitangent),
-                    normalize(Normal));
-    return normalize(TBN * Nmap);
+    vec3 Nmap = texture(textureSamplers[1], UV).xyz * 2.0 - 1.0;
+    vec3 T = normalize(tangent);
+    vec3 N = normalize(Normal);
+    vec3 B = normalize(cross(N, T));
+    mat3 TBN = mat3(T, B, N);
+    return Normal;
 }
 
 //––– Main –––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
 void main() {
-    // fetch material
-    vec3  albedo    = pow(texture(textureSamplers[0], UV).rgb, vec3(2.2));
-    float metallic  = texture(textureSamplers[2], UV).r;
-    float roughness = texture(textureSamplers[4], UV).r;
-    float ao        = texture(textureSamplers[1], UV).r;
+    vec3 albedo    = texture(textureSamplers[0], UV).rgb;
+    float roughness = texture(textureSamplers[2], UV).r;
+    float metallic = 0.0;
+    float ao       = 1.0;
 
-    // geometry
     vec3 N  = getNormal();
     vec3 V  = normalize(cameraPos - fragPos);
     vec3 F0 = mix(vec3(0.04), albedo, metallic);
 
-    // lighting loop
     vec3 Lo = vec3(0.0);
     for(int i=0; i<MAX_LIGHTS; ++i) {
         Light L = lights[i];
-        if(L.type==0) continue;
+        if(L.type == 0) continue;
 
-        vec3 Ldir    = normalize(L.position - fragPos);
-        vec3 H       = normalize(V + Ldir);
-        float dist   = length(L.position - fragPos);
-        float atten  = 1.0/(L.constantAttenuation
-                         +L.linearAttenuation*dist
-                         +L.quadraticAttenuation*dist*dist);
+        vec3 Ldir;
+        if(L.type == 1) { // point light
+            Ldir = normalize(L.position - fragPos);
+        } else if(L.type == 2) { // directional light
+            Ldir = normalize(-L.direction);
+        } else {
+            continue;
+        }
+
+        float dist = length(L.position - fragPos);
+        float atten = 1.0 / max(L.constantAttenuation + L.linearAttenuation*dist + L.quadraticAttenuation*dist*dist, 1e-4);
         vec3 radiance = L.diffuseColor * L.intensity * atten;
 
-        // Cook–Torrance
+        vec3 H = normalize(V + Ldir);
         float NDF = DistributionGGX(N, H, roughness);
         float G   = GeometrySmith(N, V, Ldir, roughness);
-        vec3  F   = fresnelSchlick(max(dot(H,V),0.0), F0);
-        vec3  nom = NDF * G * F;
+        vec3 F    = fresnelSchlick(max(dot(H,V),0.0), F0);
+        vec3 nom  = NDF * G * F;
         float denom = 4.0*max(dot(N,V),0.0)*max(dot(N,Ldir),0.0) + 1e-4;
-        vec3 spec   = nom/denom;
+        vec3 spec = nom / denom;
 
         vec3 kS = F;
-        vec3 kD = (1.0 -kS)*(1.0 -metallic);
-        float NdotL = max(dot(N,Ldir), 0.0);
+        vec3 kD = (1.0 - kS)*(1.0 - metallic);
+        float NdotL = max(dot(N,Ldir),0.0);
 
-        // accumulate
-        Lo += (kD * albedo/PI + spec) * radiance * NdotL;
+        Lo += (kD*albedo/PI + spec) * radiance * NdotL;
     }
 
-    // ambient + AO + tone‐map + gamma
     vec3 ambient = vec3(0.03) * albedo * ao;
-    vec3 color   = ambient + Lo;
-    color = color/(color + vec3(1.0));
-    color = pow(color, vec3(1.0/2.2));
+    vec3 color = ambient + Lo;
+
+    color = color / (color + vec3(1.0)); // tone mapping
+    color = pow(color, vec3(1.0/2.2));   // gamma
 
     outColor = vec4(color, 1.0);
 }
