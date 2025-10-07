@@ -198,20 +198,38 @@ Simple3D::Model* loadModel(std::string MODEL_PATH) {
         glm::vec2 deltaUV1 = v1.texCoord - v0.texCoord;
         glm::vec2 deltaUV2 = v2.texCoord - v0.texCoord;
 
-        float f = 1.0f / (deltaUV1.x * deltaUV2.y - deltaUV2.x * deltaUV1.y);
+        float det = deltaUV1.x * deltaUV2.y - deltaUV2.x * deltaUV1.y;
+        if (fabs(det) < 1e-6f) continue;
+
+        float f = 1.0f / det;
 
         glm::vec3 tangent = f * (deltaUV2.y * edge1 - deltaUV1.y * edge2);
-        tangent = glm::normalize(tangent);
+        glm::vec3 bitangent = f * (-deltaUV2.x * edge1 + deltaUV1.x * edge2);
 
-        // Add the same tangent to all three vertices
-        v0.tangent += tangent;
-        v1.tangent += tangent;
-        v2.tangent += tangent;
+        tangent = glm::normalize(tangent);
+        bitangent = glm::normalize(bitangent);
+
+        // accumulate
+        v0.tangent += glm::vec4(tangent, 0.0f);
+        v1.tangent += glm::vec4(tangent, 0.0f);
+        v2.tangent += glm::vec4(tangent, 0.0f);
     }
 
-    // Normalize all tangents
+    // Normalize and compute handedness per vertex
     for (auto& vertex : vertices) {
-        vertex.tangent = glm::normalize(vertex.tangent);
+        glm::vec3 N = glm::normalize(vertex.normal);
+        glm::vec3 T = glm::normalize(glm::vec3(vertex.tangent));
+
+        // Orthogonalize T to N
+        T = glm::normalize(T - N * glm::dot(N, T));
+
+        // Compute bitangent using triangle UVs (approximation)
+        glm::vec3 B = glm::normalize(glm::cross(N, T));
+
+        // Determine handedness (sign)
+        float handedness = (glm::dot(glm::cross(N, T), B) < 0.0f) ? -1.0f : 1.0f;
+
+        vertex.tangent = glm::vec4(T, handedness);
     }
 
     return new Simple3D::Model(vertices, indices);
@@ -281,23 +299,53 @@ int main() {
     );
 #endif // USEIMGUI
 
-    Simple3D::Model* myModel = loadModel("meteor.obj");
+
+
+
+
+    // Light setup
     Simple3D::Light* myLight = new Simple3D::Light();
-
-
-    myLight->type = Simple3D::directional;
+    myLight->type = Simple3D::point;
     myLight->castShadows = false;
-    myLight->diffuseColor = glm::vec3(1.0f, 1.0f, 1.0f);
-    myLight->ambientColor = glm::vec3(1.0f, 1.0f, 1.0f);
+
+    // Color setup
+    myLight->ambientColor = glm::vec3(0.05f, 0.05f, 0.05f); // subtle ambient tint
+    myLight->diffuseColor = glm::vec3(1.0f, 1.0f, 1.0f);     // white diffuse light
+    myLight->specularColor = glm::vec3(1.0f, 1.0f, 1.0f);     // white highlights
+
+    // Intensity and position
+    myLight->intensity = 0.3f;
     myLight->position = glm::vec3(0.0f, 0.0f, 2.0f);
 
-    // Setup Materials for all models
+    // No direction needed for point lights
+    myLight->direction = glm::vec3(0.0f);
+
+    // Shadows off
+    myLight->shadowBias = 0.0f;
+    myLight->shadowIntensity = 0.0f;
+
+    // Spotlight fields — unused for point light
+    myLight->cutoffAngle = 0.0f;
+    myLight->outerCutoffAngle = 0.0f;
+
+    // Attenuation (how light fades over distance)
+    myLight->constantAttenuation = 1.0f;
+    myLight->linearAttenuation = 0.09f;
+    myLight->quadraticAttenuation = 0.032f;
+
+
+    // Load model
+    Simple3D::Model* myModel = loadModel("meteor.obj");
+
+    // Set up model material
     Simple3D::MaterialInfo info;
     info.FragmentSource = "shaders/lit_PBR.spv";
     info.vertexSource = "shaders/vert.spv";
-    info.textures["Albeado"] = ("textures/5382.jpg");
+    info.textures["Albedo"] = ("textures/5382.jpg");
     info.textures["Normal"] = ("textures/asteroid_normal.jpg");
     info.textures["Roughness"] = ("textures/asteroid_rough.jpg");
+    info.textures["Metalic"] = ("textures/black.jpeg"); // No metalic
+    info.textures["AO"] = ("textures/white.jpg"); // No AO
     info.isLit = true;
 
 
@@ -307,15 +355,17 @@ int main() {
     myModel->SetTransform(glm::rotate(glm::mat4(1.0f), glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f)));
     myModel->SetTransform(glm::rotate(myModel->GetTransform(), glm::radians(-90.0f), glm::vec3(0.0f, 0.0f, 1.0f)));
 
-    // Set Positions
+
+
+    // Set camera position
     mainCam->setPosition(glm::vec3(0.0f, 0.5f, 2.0f));
     mainCam->perspectiveMode = true;
     mainCam->lookAt(glm::vec3(0.0f));
 
+
+
+    // Add camera to renderer
     renderer->SubmitMainCamera(mainCam, mainInstance);
-
-
-
 
 
     // Main loop
@@ -350,12 +400,58 @@ int main() {
 
         // Only bother rendering imgui if the window is actuale able to draw
         if (renderer->NewImguiframe()) {
-            ImGui::Begin("Test view");
+            ImGui::Begin("Light Editor");
 
-            // Display the texture
-            ImGui::Image((ImTextureID)ImguiDiscriptor, { (float)ImguiTexture->width, (float)ImguiTexture->height});
+            // --- Light Type ---
+            const char* lightTypes[] = { "None", "Point", "Spot", "Directional" };
+            int currentType = myLight->type;
+            if (ImGui::Combo("Light Type", &currentType, lightTypes, IM_ARRAYSIZE(lightTypes))) {
+                myLight->type = static_cast<Simple3D::LightType>(currentType);
+            }
 
+            // --- Light Colors ---
+            ImGui::SeparatorText("Color");
+            ImGui::ColorEdit3("Ambient", (float*)&myLight->ambientColor);
+            ImGui::ColorEdit3("Diffuse", (float*)&myLight->diffuseColor);
+            ImGui::ColorEdit3("Specular", (float*)&myLight->specularColor);
 
+            // --- Intensity ---
+            ImGui::SeparatorText("Intensity");
+            ImGui::SliderFloat("Intensity", &myLight->intensity, 0.0f, 10.0f, "%.2f");
+
+            // --- Position & Direction ---
+            ImGui::SeparatorText("Transform");
+            ImGui::DragFloat3("Position", (float*)&myLight->position, 0.1f);
+            ImGui::DragFloat3("Direction", (float*)&myLight->direction, 0.1f);
+
+            // --- Attenuation ---
+            ImGui::SeparatorText("Attenuation");
+            ImGui::SliderFloat("Constant", &myLight->constantAttenuation, 0.0f, 2.0f, "%.3f");
+            ImGui::SliderFloat("Linear", &myLight->linearAttenuation, 0.0f, 1.0f, "%.3f");
+            ImGui::SliderFloat("Quadratic", &myLight->quadraticAttenuation, 0.0f, 1.0f, "%.3f");
+
+            // --- Spot Angles (if spotlight) ---
+            if (myLight->type == Simple3D::spot) {
+                ImGui::SeparatorText("Spotlight Angles");
+                float cutoffDeg = glm::degrees(acos(myLight->cutoffAngle));
+                float outerDeg = glm::degrees(acos(myLight->outerCutoffAngle));
+
+                if (ImGui::SliderFloat("Inner Angle", &cutoffDeg, 0.0f, 90.0f, "%.1f°"))
+                    myLight->cutoffAngle = glm::cos(glm::radians(cutoffDeg));
+
+                if (ImGui::SliderFloat("Outer Angle", &outerDeg, 0.0f, 90.0f, "%.1f°"))
+                    myLight->outerCutoffAngle = glm::cos(glm::radians(outerDeg));
+            }
+
+            // --- Shadow Options ---
+            ImGui::SeparatorText("Shadows");
+            ImGui::Checkbox("Cast Shadows", &myLight->castShadows);
+            ImGui::SliderFloat("Shadow Bias", &myLight->shadowBias, 0.0f, 0.05f, "%.4f");
+            ImGui::SliderFloat("Shadow Intensity", &myLight->shadowIntensity, 0.0f, 1.0f, "%.2f");
+
+            ImGui::Separator();
+            ImGui::Text("Position: (%.2f, %.2f, %.2f)", myLight->position.x, myLight->position.y, myLight->position.z);
+            ImGui::Text("Direction: (%.2f, %.2f, %.2f)", myLight->direction.x, myLight->direction.y, myLight->direction.z);
 
             ImGui::End();
 

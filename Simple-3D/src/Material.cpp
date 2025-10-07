@@ -49,6 +49,7 @@ namespace Simple3D {
         VkDeviceSize imageSize = texWidth * texHeight * 4;
 
         if (!pixels) {
+            printf("Failed to read file properly");
             throw std::runtime_error("failed to load texture image!");
         }
 

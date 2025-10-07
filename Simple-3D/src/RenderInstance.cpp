@@ -99,7 +99,7 @@ namespace Simple3D {
 
 			// UPdate with models position and shizzle
 			pipeline->updateUniformBuffer(currentFrame, camera->getProjectionMatrix(swapChain->GetSwapChainExtent().width, swapChain->GetSwapChainExtent().height), camera->getViewMatrix(), model->GetTransform(), camera->position);
-			pipeline->updateLights(currentFrame, lights);							 
+			pipeline->updateLights(currentFrame, lights);					 
 
 			VkBuffer vertexBuffers[] = { model->GetVertexBuffer() };
 			VkDeviceSize offsets[] = { 0 };

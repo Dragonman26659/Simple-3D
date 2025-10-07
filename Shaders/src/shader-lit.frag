@@ -36,9 +36,11 @@ struct Light {
 
 // Input color and texture coordinate
 layout(location = 0) in vec3 fragColor;
-layout(location = 2) in vec2 fragTexCoord;
-layout(location = 1) in vec3 Normal;
+layout(location = 2) in vec2 UV;
+layout(location = 1) in vec3 Normal_Face;
 layout(location = 3) in vec3 fragPos;
+layout(location = 4) in vec4 tangent;
+layout(location = 5) in vec3 cameraPos;
 
 layout(location = 0) out vec4 outColor;
 
@@ -51,8 +53,34 @@ layout(std430, binding = 2) buffer LightBuffer {
 
 
 
+float ao            =    texture(textureSamplers[0], UV).r;
+vec3 albedo         =    texture(textureSamplers[1], UV).rgb;
+float metallic      =    texture(textureSamplers[2], UV).r;
+vec3 Normal         =    texture(textureSamplers[3], UV).rgb;
+float roughness     =    texture(textureSamplers[4], UV).r;
+
+
+
+// Normal at frag coord
+vec3 getNormal()
+{    
+    Normal = Normal * 2.0 - 1.0; // convert from [0,1] → [-1,1]
+
+    // Retrieve interpolated vertex data
+    vec3 N = normalize(Normal_Face);
+    vec3 T = normalize(tangent.xyz - dot(tangent.xyz, N) * N); // orthogonalize
+    vec3 B = normalize(cross(N, T)) * tangent.w;               // apply handedness
+
+    // Transform tangent-space normal to world-space
+    mat3 TBN = mat3(T, B, N);
+    vec3 worldNormal = normalize(TBN * Normal);
+
+    return worldNormal;
+}
+
+
 void main() {
-    vec4 texColor = texture(textureSamplers[0], fragTexCoord);
+    vec4 texColor = texture(textureSamplers[1], UV);
     vec4 fragColor = texColor;
 
     // Sample the texture at the current coordinates
@@ -63,12 +91,12 @@ void main() {
         if (light.type == 0)
             continue; 
 
-        vec3 normal = normalize(Normal);
+        vec3 normal = getNormal();
         vec3 lightDir = normalize(light.position - fragPos);
 
         float diffuse = max(dot(normal, lightDir), 0.0f);
 
-        fragColor = (texColor * vec4(light.diffuseColor, 1.0f) * diffuse) + (vec4(light.ambientColor, 1.0f) * 0.02f);
+        fragColor = ((texColor * 0.02f) + (vec4(light.diffuseColor, 1.0f) * diffuse) / length(light.position - fragPos));
     }
 
 
