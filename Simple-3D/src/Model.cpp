@@ -41,17 +41,16 @@ namespace Simple3D {
     }
 
     void Model::DestroyBuffers() {
-        vkDestroyBuffer(r_device->getLogicalDevice(), vertexBuffer, nullptr);
-        vkFreeMemory(r_device->getLogicalDevice(), vertexBufferMemory, nullptr);
+        if (vertexBuffer != VK_NULL_HANDLE) {
+            vkDestroyBuffer(r_device->getLogicalDevice(), vertexBuffer, nullptr);
+            vertexBuffer = VK_NULL_HANDLE;
+        }
 
-        vkDestroyBuffer(r_device->getLogicalDevice(), vertexBuffer, nullptr);
-        vkFreeMemory(r_device->getLogicalDevice(), vertexBufferMemory, nullptr);
+        if (vertexBufferMemory != VK_NULL_HANDLE) {
+            vkFreeMemory(r_device->getLogicalDevice(), vertexBufferMemory, nullptr);
+            vertexBufferMemory = VK_NULL_HANDLE;
+        }
 
-
-
-
-
-        // Make sure we know buffer is gone and dont keep track of device or command pool anymore
         r_device = nullptr;
         r_commandPool = nullptr;
         BufferEnabled = false;

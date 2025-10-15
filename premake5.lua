@@ -61,6 +61,7 @@ project "Simple-3D"
     filter "configurations:Release"
         defines {"NDEBUG"}
         symbols "On"
+        runtime "Release"
     
     filter "system:windows"
         cppdialect "C++17"

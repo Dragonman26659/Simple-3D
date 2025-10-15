@@ -55,63 +55,92 @@ namespace Simple3D {
 		// Begin render pass
 		vkCmdBeginRenderPass(cmd, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-		// Draw Models
+		// Define viewport
+		VkViewport viewport{};
+		viewport.x = 0.0f;
+		viewport.y = 0.0f;
+		if (RenderToTexture) {
+			viewport.width = static_cast<float>(texture->width);
+			viewport.height = static_cast<float>(texture->height);
+		}
+		else {
+			viewport.width = static_cast<float>(swapChain->GetSwapChainExtent().width);
+			viewport.height = static_cast<float>(swapChain->GetSwapChainExtent().height);
+		}
+		viewport.minDepth = 0.0f;
+		viewport.maxDepth = 1.0f;
+
+
+		// Define sissor
+		VkRect2D scissor{};
+		scissor.offset = { 0, 0 };
+		if (RenderToTexture) {
+			scissor.extent = texture->getExtent();
+		}
+		else {
+			scissor.extent = swapChain->GetSwapChainExtent();
+		}
+		vkCmdSetViewport(cmd, 0, 1, &viewport);
+		vkCmdSetScissor(cmd, 0, 1, &scissor);
+
+
+		// Group models by material to minimize state changes
+		std::unordered_map<Material*, std::vector<Model*>> modelsByMaterial;
 		for (Model* model : models) {
-			if (!model->hasBuffer()) {
-				model->CreateBuffers(RenderDevice, &commandPool);
-			}
-
-			// Bind pipeline for render pass
-			auto pipeline = materials[model->material];
-			vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->GetPipeline());
-			
-
-
-
-			// Define viewport
-			VkViewport viewport{};
-			viewport.x = 0.0f;
-			viewport.y = 0.0f;
-			if (RenderToTexture) {
-				viewport.width = static_cast<float>(texture->width);
-				viewport.height = static_cast<float>(texture->height);
-			}
-			else {
-				viewport.width = static_cast<float>(swapChain->GetSwapChainExtent().width);
-				viewport.height = static_cast<float>(swapChain->GetSwapChainExtent().height);
-			}
-			viewport.minDepth = 0.0f;
-			viewport.maxDepth = 1.0f;
-			vkCmdSetViewport(cmd, 0, 1, &viewport);
-
-			// Define sissor
-			VkRect2D scissor{};
-			scissor.offset = { 0, 0 };
-			if (RenderToTexture) {
-				scissor.extent = texture->getExtent();
-			}
-			else {
-				scissor.extent = swapChain->GetSwapChainExtent();
-			}
-
-
-			vkCmdSetScissor(cmd, 0, 1, &scissor);
-
-			// UPdate with models position and shizzle
-			pipeline->updateUniformBuffer(currentFrame, camera->getProjectionMatrix(swapChain->GetSwapChainExtent().width, swapChain->GetSwapChainExtent().height), camera->getViewMatrix(), model->GetTransform(), camera->position);
-			pipeline->updateLights(currentFrame, lights);					 
-
-			VkBuffer vertexBuffers[] = { model->GetVertexBuffer() };
-			VkDeviceSize offsets[] = { 0 };
-			vkCmdBindVertexBuffers(cmd, 0, 1, vertexBuffers, offsets);
-			vkCmdBindIndexBuffer(cmd, model->GetIndexBuffer(), 0, VK_INDEX_TYPE_UINT32);
-
-			uint32_t dynamicOffset = 0;
-			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->GetLayout(), 0, 1, &pipeline->descriptorSets[currentFrame], 1, &dynamicOffset);
-
-			vkCmdDrawIndexed(cmd, static_cast<uint32_t>(model->Indices.size()), 1, 0, 0, 0);
+			modelsByMaterial[model->material].push_back(model);
 		}
 
+		// Render each group of models with the same material
+		for (const auto& [material, modelGroup] : modelsByMaterial) {
+			auto pipeline = materials[material];
+
+			// Ensure light buffer / descriptors are updated BEFORE binding the set
+			pipeline->updateLights(currentFrame, lights);
+
+			vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->GetPipeline());
+		
+
+			// bind descriptors once per material, but still pass dynamic offset per-draw
+			for (size_t idx = 0; idx < modelGroup.size(); ++idx) {
+				Model* model = modelGroup[idx];
+
+				if (!model->hasBuffer()) {
+					model->CreateBuffers(RenderDevice, &commandPool);
+				}
+
+
+				// update into dynamic UBO slot idx (or some object index assignment logic)
+				pipeline->updateUniformBuffer(currentFrame, static_cast<uint32_t>(idx),
+					camera->getProjectionMatrix((int)viewport.width, (int)viewport.height),
+					camera->getViewMatrix(),
+					model->GetTransform(),
+					camera->position);
+
+				// compute dynamic offset in bytes (must be multiple of dynamicAlignment)
+				VkDeviceSize dynamicAlignment = getAlignedSize(sizeof(UniformBufferObject), RenderDevice->GetProperties().limits.minUniformBufferOffsetAlignment);
+				uint32_t uboOffset = static_cast<uint32_t>(idx * dynamicAlignment);
+
+				if (material->isLit) {
+					uint32_t lightOffset = 0; // if you don't use per-light offsets, keep 0
+					uint32_t offsets[2] = { uboOffset, lightOffset };
+					vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->GetLayout(),
+						0, 1, &pipeline->descriptorSets[currentFrame],
+						2, offsets);
+				}
+				else {
+					vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->GetLayout(),
+						0, 1, &pipeline->descriptorSets[currentFrame],
+						1, &uboOffset);
+				}
+
+				// bind vertex/index buffers & draw
+				VkBuffer vertexBuffers[] = { model->GetVertexBuffer() };
+				VkDeviceSize offsets[] = { 0 };
+				vkCmdBindVertexBuffers(cmd, 0, 1, vertexBuffers, offsets);
+				vkCmdBindIndexBuffer(cmd, model->GetIndexBuffer(), 0, VK_INDEX_TYPE_UINT32);
+				vkCmdDrawIndexed(cmd, static_cast<uint32_t>(model->Indices.size()), 1, 0, 0, 0);
+			}
+		}
 
 		// End render pass
 		vkCmdEndRenderPass(cmd);

@@ -18,6 +18,13 @@ namespace Simple3D {
 		VkImageView imageView;
 		VkImage image;
 
+		VkImage depthImage = VK_NULL_HANDLE;
+		VkDeviceMemory depthImageMemory = VK_NULL_HANDLE;
+		VkImageView depthImageView = VK_NULL_HANDLE;
+		VkFormat depthFormat = VK_FORMAT_UNDEFINED;
+
+
+
 		VkFramebuffer framebuffer;
 		VkRenderPass renderPass;
 
@@ -37,6 +44,7 @@ namespace Simple3D {
 
 		void createFramebufferForImageView(int width, int height);
 
+		void createDepthResources();
 
 		void setupTransitionResources() {
 			// Create fence for synchronization
@@ -76,9 +84,10 @@ namespace Simple3D {
 		bool TransitionForRead(VkCommandBuffer cmdBuf, uint32_t targetQueueFamily);
 		void waitPreviousTransition();
 
-
+		VkImage GetImage() { return image; }
 		VkImageView GetImageView() { return imageView; }
 		VkRenderPass getRenderPass() { return renderPass;  }
 		VkFramebuffer getFrameBuffer() { return framebuffer; }
+		VkImageView getDepthView() { return depthImageView; }
 	};
 }

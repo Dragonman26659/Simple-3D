@@ -22,9 +22,7 @@ namespace Simple3D {
         glm::vec3 direction;
 
         // Intensity and color properties
-        glm::vec3 ambientColor;
-        glm::vec3 diffuseColor;
-        glm::vec3 specularColor;
+        glm::vec3 Color;
         float intensity;
 
         // Shadow-related properties
@@ -34,10 +32,5 @@ namespace Simple3D {
         // Spotlight-specific properties
         float cutoffAngle;
         float outerCutoffAngle;
-
-        // Attenuation parameters for point/spot lights
-        float constantAttenuation;
-        float linearAttenuation;
-        float quadraticAttenuation;
     };
 }

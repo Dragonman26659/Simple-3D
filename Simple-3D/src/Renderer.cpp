@@ -38,9 +38,8 @@ namespace Simple3D {
 			VK_NULL_HANDLE,
 			&imageIndex);
 
-		if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
+		if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || WindowResized()) {
 			WindoResize();
-			return;
 		}
 		else if (result != VK_SUCCESS) {
 			printf("Simple3D failed to acquire swap chain image!");
@@ -315,9 +314,9 @@ namespace Simple3D {
 	void Renderer::WindoResize() {
 		RecreateSwapChain();
 
-		for (auto texture : RenderTextures) {
-			texture->resize(swapChain->GetSwapChainExtent().width, swapChain->GetSwapChainExtent().height);
-		}
+		//for (auto texture : RenderTextures) {
+		//	texture->resize(swapChain->GetSwapChainExtent().width, swapChain->GetSwapChainExtent().height);
+		//}
 	}
 
 	TextureBinding Renderer::CreateTexture(std::string filepath) {
@@ -700,7 +699,7 @@ namespace Simple3D {
 		swapChain->recreate(width, height);
 
 		delete depthBuffer;
-		depthBuffer = new DepthBuffer(RenderDevice, swapChain, &commandPool);
+		depthBuffer = new DepthBuffer(RenderDevice, swapChain->GetSwapChainExtent(), &commandPool);
 
 
 		createFramebuffers();

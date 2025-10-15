@@ -52,6 +52,10 @@ namespace Simple3D {
         // Make camera look at coordinate
         void lookAt(const glm::vec3& target);
 
+        glm::vec3 getForward() const;
+        glm::vec3 getRight() const;
+        glm::vec3 getUp() const;
+
         glm::vec3 position;
         float pitch, yaw, roll;  // Euler angles in degrees
         bool perspectiveMode;

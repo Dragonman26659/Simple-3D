@@ -4,6 +4,17 @@
 
 namespace Simple3D {
 
+
+    void NameTextureBinding(Device* r_device, const TextureBinding& binding, const std::string& textureName) {
+        auto device = r_device->getLogicalDevice();
+
+        NameVulkanObject(device, (uint64_t)binding.view, VK_OBJECT_TYPE_IMAGE_VIEW, textureName + " View");
+        NameVulkanObject(device, (uint64_t)binding.sampler, VK_OBJECT_TYPE_SAMPLER, textureName + " Sampler");
+        NameVulkanObject(device, (uint64_t)binding.textureImage, VK_OBJECT_TYPE_IMAGE, textureName + " Image");
+        NameVulkanObject(device, (uint64_t)binding.textureImageMemory, VK_OBJECT_TYPE_DEVICE_MEMORY, textureName + " Memory");
+        NameVulkanObject(device, (uint64_t)binding.descriptorSet, VK_OBJECT_TYPE_DESCRIPTOR_SET, textureName + " DescriptorSet");
+    }
+
     Material::Material(Device* device, VkCommandPool* commandPool, std::string vertex, std::string Fragment, std::unordered_map<std::string, std::string> texture_files, bool isLit)
         : r_device(device), r_commandPool(commandPool)
         , vertexSource(vertex), FragmentSource(Fragment), isLit(isLit)
@@ -81,6 +92,10 @@ namespace Simple3D {
         // Create image view and sampler
         binding.view = createImageView(binding.textureImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT, r_device);
         createTextureSampler(&binding, r_device);
+
+
+        //NameTextureBinding(r_device, binding, texture);
+
 
 
 

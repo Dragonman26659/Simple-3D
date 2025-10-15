@@ -210,13 +210,15 @@ namespace Simple3D {
     }
 
     void Pipeline::createDescriptorSetLayout() {
+        std::vector<VkDescriptorSetLayoutBinding> bindings;
+
         VkDescriptorSetLayoutBinding uboLayoutBinding{};
         uboLayoutBinding.binding = 0;
-        uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
         uboLayoutBinding.descriptorCount = 1;
-
         uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
         uboLayoutBinding.pImmutableSamplers = nullptr;
+        bindings.push_back(uboLayoutBinding);
 
         VkDescriptorSetLayoutBinding samplerLayoutBinding{};
         samplerLayoutBinding.binding = 1;
@@ -224,19 +226,17 @@ namespace Simple3D {
         samplerLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         samplerLayoutBinding.pImmutableSamplers = nullptr;
         samplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+        bindings.push_back(samplerLayoutBinding);
 
-        VkDescriptorSetLayoutBinding lightLayoutBinding{};
-        lightLayoutBinding.binding = 2;
-        lightLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
-        lightLayoutBinding.descriptorCount = 1;
-        lightLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-        lightLayoutBinding.pImmutableSamplers = nullptr;
-
-        std::array<VkDescriptorSetLayoutBinding, 3> bindings = {
-            uboLayoutBinding,
-            samplerLayoutBinding,
-            lightLayoutBinding
-        };
+        if (material->isLit) {
+            VkDescriptorSetLayoutBinding lightLayoutBinding{};
+            lightLayoutBinding.binding = 2;
+            lightLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
+            lightLayoutBinding.descriptorCount = 1;
+            lightLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+            lightLayoutBinding.pImmutableSamplers = nullptr;
+            bindings.push_back(lightLayoutBinding);
+        }
 
         VkDescriptorSetLayoutCreateInfo layoutInfo{};
         layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -255,7 +255,7 @@ namespace Simple3D {
 
         // Uniform buffer pool size
         poolSizes.push_back({});
-        poolSizes.back().type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        poolSizes.back().type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
         poolSizes.back().descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
 
         // Combined image sampler pool size
@@ -299,7 +299,7 @@ namespace Simple3D {
 
         for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
             VkDescriptorBufferInfo bufferInfo{};
-            bufferInfo.buffer = uniformBuffers[i];
+            bufferInfo.buffer = dynamicUniformBuffers[i];
             bufferInfo.offset = 0;
             bufferInfo.range = sizeof(UniformBufferObject);
 
@@ -345,7 +345,7 @@ namespace Simple3D {
             descriptorWrite.dstSet = descriptorSets[i];
             descriptorWrite.dstBinding = 0;
             descriptorWrite.dstArrayElement = 0;
-            descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+            descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
             descriptorWrite.descriptorCount = 1;
             descriptorWrite.pBufferInfo = &bufferInfo;
 
@@ -355,10 +355,6 @@ namespace Simple3D {
 
 
             std::vector<VkWriteDescriptorSet> descriptorWrites;
-            VkDescriptorBufferInfo uboBufferInfo{};
-            uboBufferInfo.buffer = uniformBuffers[i];
-            uboBufferInfo.offset = 0;
-            uboBufferInfo.range = sizeof(UniformBufferObject);
 
             if (material->isLit) {  
                 VkDescriptorBufferInfo lightBufferInfo{};
@@ -379,13 +375,20 @@ namespace Simple3D {
                 descriptorWrites.push_back(lightWrite);
             }
 
+
+            // For each frame i:
+            VkDescriptorBufferInfo uboBufferInfo{};
+            uboBufferInfo.buffer = dynamicUniformBuffers[i];
+            uboBufferInfo.offset = 0;
+            uboBufferInfo.range = sizeof(UniformBufferObject);
+
             // Uniform buffer descriptor
             VkWriteDescriptorSet uboWrite{};
             uboWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
             uboWrite.dstSet = descriptorSets[i];
             uboWrite.dstBinding = 0;
             uboWrite.dstArrayElement = 0;
-            uboWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+            uboWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
             uboWrite.descriptorCount = 1;
             uboWrite.pBufferInfo = &uboBufferInfo;
                 
@@ -407,27 +410,51 @@ namespace Simple3D {
     }
 
     void Pipeline::createUniformBuffers() {
-        VkDeviceSize bufferSize = sizeof(UniformBufferObject);
+        // size of single object UBO (same as UniformBufferObject)
+        VkDeviceSize objectSize = sizeof(UniformBufferObject);
 
-        uniformBuffers.resize(MAX_FRAMES_IN_FLIGHT);
-        uniformBuffersMemory.resize(MAX_FRAMES_IN_FLIGHT);
-        uniformBuffersMapped.resize(MAX_FRAMES_IN_FLIGHT);
+        // query alignment requirement
+        VkPhysicalDeviceProperties properties;
+        vkGetPhysicalDeviceProperties(s_Device.getPhysicalDevice(), &properties);
+        VkDeviceSize minUboAlignment = properties.limits.minUniformBufferOffsetAlignment;
 
+        dynamicAlignment = static_cast<size_t>(getAlignedSize(objectSize, minUboAlignment));
+        dynamicBufferSize = dynamicAlignment * static_cast<VkDeviceSize>(maxObjects);
+
+        // allocate arrays
+        dynamicUniformBuffers.resize(MAX_FRAMES_IN_FLIGHT);
+        dynamicUniformBuffersMemory.resize(MAX_FRAMES_IN_FLIGHT);
+        dynamicUniformBuffersMapped.resize(MAX_FRAMES_IN_FLIGHT);
+
+        // If you still need single-per-frame uniformBuffers for other data remove or keep them.
         for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-            createBuffer(bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, uniformBuffers[i], uniformBuffersMemory[i], &s_Device);
+            createBuffer(dynamicBufferSize,
+                VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                dynamicUniformBuffers[i],
+                dynamicUniformBuffersMemory[i],
+                &s_Device);
 
-            vkMapMemory(s_Device.getLogicalDevice(), uniformBuffersMemory[i], 0, bufferSize, 0, &uniformBuffersMapped[i]);
+            vkMapMemory(s_Device.getLogicalDevice(), dynamicUniformBuffersMemory[i], 0, dynamicBufferSize, 0, &dynamicUniformBuffersMapped[i]);
         }
     }
 
-    void Pipeline::updateUniformBuffer(uint32_t currentImage, glm::mat4 PerspectiveMatrix, glm::mat4 ViewMatrix, glm::mat4 transform, glm::vec3 CameraPos) {
+    void Pipeline::updateUniformBuffer(uint32_t currentImage, uint32_t objectIndex, glm::mat4 PerspectiveMatrix, glm::mat4 ViewMatrix, glm::mat4 transform, glm::vec3 CameraPos) {
+        if (objectIndex >= maxObjects) {
+            // optional: handle overflow (realloc bigger buffer or clamp)
+            throw std::runtime_error("objectIndex >= maxObjects in updateUniformBuffer");
+        }
+
         UniformBufferObject ubo{};
         ubo.view = ViewMatrix;
         ubo.proj = PerspectiveMatrix;
         ubo.model = transform;
         ubo.cameraPos = CameraPos;
 
-        memcpy(uniformBuffersMapped[currentImage], &ubo, sizeof(ubo));
+        uint8_t* dst = reinterpret_cast<uint8_t*>(dynamicUniformBuffersMapped[currentImage]);
+        dst += static_cast<VkDeviceSize>(objectIndex) * dynamicAlignment;
+        memcpy(dst, &ubo, sizeof(ubo));
+        // if not HOST_COHERENT: flush mapped range here
     }
 
     void Pipeline::createLightBuffers() {
@@ -514,6 +541,8 @@ namespace Simple3D {
 
 
     void Pipeline::setRenderPass(VkRenderPass newRenderPass) {
+        if (renderPass == newRenderPass) return;
+
         if (graphicsPipeline != VK_NULL_HANDLE) {
             vkDestroyPipeline(s_Device.getLogicalDevice(), graphicsPipeline, nullptr);
         }

@@ -9,23 +9,24 @@ namespace Simple3D {
 			throw std::runtime_error("Invalid texture dimensions");
 		}
 
-		// 1. Initialize state first
 		currentState.layout = VK_IMAGE_LAYOUT_UNDEFINED;
 		currentState.owningQueueFamily = VK_QUEUE_FAMILY_IGNORED;
 		currentState.lastTransitionFence = VK_NULL_HANDLE;
-		
 
-		// 2. Create image and view
+		// 1. Create color image
 		createImageForImageView();
 		createImageView();
 
-		// 3. Create render pass
+		// 2. Create depth image
+		createDepthResources();
+
+		// 3. Create render pass (now includes depth attachment)
 		createRenderPassForImageView();
 
-		// 4. Create framebuffer
+		// 4. Create framebuffer (color + depth)
 		createFramebufferForImageView(width, height);
 
-		// 5. Initialize transition resources
+		// 5. Setup transition / sync objects
 		setupTransitionResources();
 	}
 
@@ -126,55 +127,64 @@ namespace Simple3D {
 		}
 
 		// Create framebuffer
-		VkImageView attachments[] = { imageView };
-		VkFramebufferCreateInfo framebufferInfo = {};
+		std::array<VkImageView, 2> attachments = { imageView, depthImageView };
+
+		VkFramebufferCreateInfo framebufferInfo{};
 		framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
 		framebufferInfo.renderPass = renderPass;
-		framebufferInfo.attachmentCount = 1;
-		framebufferInfo.pAttachments = attachments;
+		framebufferInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
+		framebufferInfo.pAttachments = attachments.data();
 		framebufferInfo.width = width;
 		framebufferInfo.height = height;
 		framebufferInfo.layers = 1;
 
-		if (vkCreateFramebuffer(RenderDevice->getLogicalDevice(), &framebufferInfo, nullptr, &framebuffer) != VK_SUCCESS) {
+		if (vkCreateFramebuffer(RenderDevice->getLogicalDevice(), &framebufferInfo, nullptr, &framebuffer) != VK_SUCCESS)
 			throw std::runtime_error("failed to create framebuffer!");
-		}
 	}
 
 
 
 
 	void RenderTexture::createRenderPassForImageView() {
-		VkAttachmentDescription attachment{};
-		attachment.format = format;
-		attachment.samples = VK_SAMPLE_COUNT_1_BIT;
-		attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-		attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-		attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-		attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-		attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-		attachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+		VkAttachmentDescription colorAttachment{};
+		colorAttachment.format = format;
+		colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+		colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+		colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+		colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+		colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+		colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+		colorAttachment.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
-		VkAttachmentReference colorAttachmentRef{};
-		colorAttachmentRef.attachment = 0;
-		colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+		VkAttachmentDescription depthAttachment{};
+		depthAttachment.format = depthFormat;
+		depthAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+		depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+		depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+		depthAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+		depthAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+		depthAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+		depthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+		VkAttachmentReference colorRef{ 0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL };
+		VkAttachmentReference depthRef{ 1, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL };
 
 		VkSubpassDescription subpass{};
 		subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
 		subpass.colorAttachmentCount = 1;
-		subpass.pColorAttachments = &colorAttachmentRef;
+		subpass.pColorAttachments = &colorRef;
+		subpass.pDepthStencilAttachment = &depthRef;
 
+		std::array<VkAttachmentDescription, 2> attachments = { colorAttachment, depthAttachment };
 		VkRenderPassCreateInfo renderPassInfo{};
 		renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-		renderPassInfo.attachmentCount = 1;
-		renderPassInfo.pAttachments = &attachment;
+		renderPassInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
+		renderPassInfo.pAttachments = attachments.data();
 		renderPassInfo.subpassCount = 1;
 		renderPassInfo.pSubpasses = &subpass;
 
-
-		if (vkCreateRenderPass(RenderDevice->getLogicalDevice(), &renderPassInfo, nullptr, &renderPass) != VK_SUCCESS) {
-			throw std::runtime_error("failed to create render pass!");
-		}
+		if (vkCreateRenderPass(RenderDevice->getLogicalDevice(), &renderPassInfo, nullptr, &renderPass) != VK_SUCCESS)
+			throw std::runtime_error("failed to create render pass for RenderTexture!");
 	}
 
 	TextureBinding* RenderTexture::getBinding() {
@@ -194,15 +204,18 @@ namespace Simple3D {
 
 
 	void RenderTexture::cleanup() {
-		vkDestroyFramebuffer(RenderDevice->getLogicalDevice(), framebuffer, nullptr);
-		vkDestroyImageView(RenderDevice->getLogicalDevice(), imageView, nullptr);
-		vkFreeMemory(RenderDevice->getLogicalDevice(), imageMemory, nullptr);
-		vkDestroyImage(RenderDevice->getLogicalDevice(), image, nullptr);
+		VkDevice device = RenderDevice->getLogicalDevice();
 
-		framebuffer = VK_NULL_HANDLE;
-		imageView = VK_NULL_HANDLE;
-		image = VK_NULL_HANDLE;
-		imageMemory = VK_NULL_HANDLE;
+		if (depthImageView) vkDestroyImageView(device, depthImageView, nullptr);
+		if (depthImage) vkDestroyImage(device, depthImage, nullptr);
+		if (depthImageMemory) vkFreeMemory(device, depthImageMemory, nullptr);
+
+		if (framebuffer) vkDestroyFramebuffer(device, framebuffer, nullptr);
+		if (imageView) vkDestroyImageView(device, imageView, nullptr);
+		if (image) vkDestroyImage(device, image, nullptr);
+		if (imageMemory) vkFreeMemory(device, imageMemory, nullptr);
+
+		if (renderPass) vkDestroyRenderPass(device, renderPass, nullptr);
 	}
 
 	bool RenderTexture::resize(int nwidth, int nheight) {
@@ -412,5 +425,55 @@ namespace Simple3D {
 
 	VkExtent2D RenderTexture::getExtent() {
 		return VkExtent2D{ static_cast<uint32_t>(width), static_cast<uint32_t>(height) };
+	}
+
+	void RenderTexture::createDepthResources() {
+		depthFormat = findDepthFormat(RenderDevice);
+
+		VkImageCreateInfo imageInfo{};
+		imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+		imageInfo.imageType = VK_IMAGE_TYPE_2D;
+		imageInfo.extent.width = width;
+		imageInfo.extent.height = height;
+		imageInfo.extent.depth = 1;
+		imageInfo.mipLevels = 1;
+		imageInfo.arrayLayers = 1;
+		imageInfo.format = depthFormat;
+		imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+		imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+		imageInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+		imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+		imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+		if (vkCreateImage(RenderDevice->getLogicalDevice(), &imageInfo, nullptr, &depthImage) != VK_SUCCESS)
+			throw std::runtime_error("failed to create depth image!");
+
+		VkMemoryRequirements memRequirements;
+		vkGetImageMemoryRequirements(RenderDevice->getLogicalDevice(), depthImage, &memRequirements);
+
+		VkMemoryAllocateInfo allocInfo{};
+		allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+		allocInfo.allocationSize = memRequirements.size;
+		allocInfo.memoryTypeIndex = RenderDevice->findMemoryType(memRequirements.memoryTypeBits,
+			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+		if (vkAllocateMemory(RenderDevice->getLogicalDevice(), &allocInfo, nullptr, &depthImageMemory) != VK_SUCCESS)
+			throw std::runtime_error("failed to allocate depth image memory!");
+
+		vkBindImageMemory(RenderDevice->getLogicalDevice(), depthImage, depthImageMemory, 0);
+
+		VkImageViewCreateInfo viewInfo{};
+		viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+		viewInfo.image = depthImage;
+		viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+		viewInfo.format = depthFormat;
+		viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+		viewInfo.subresourceRange.baseMipLevel = 0;
+		viewInfo.subresourceRange.levelCount = 1;
+		viewInfo.subresourceRange.baseArrayLayer = 0;
+		viewInfo.subresourceRange.layerCount = 1;
+
+		if (vkCreateImageView(RenderDevice->getLogicalDevice(), &viewInfo, nullptr, &depthImageView) != VK_SUCCESS)
+			throw std::runtime_error("failed to create depth image view!");
 	}
 }

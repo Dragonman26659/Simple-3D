@@ -57,7 +57,7 @@ namespace Simple3D {
             lights.push_back(light);
         }
 
-        void recordCommandBuffer(VkCommandBuffer cmd, uint32_t imageIndex, VkCommandPool commandPool, uint32_t currentFrame, VkFramebuffer framebuffer);
+        void recordCommandBuffer(VkCommandBuffer cmd, uint32_t imageIndex, VkCommandPool commandPool, uint32_t currentFrame, VkFramebuffer mainFrameBuffer);
 
 
         void ClearVectors();

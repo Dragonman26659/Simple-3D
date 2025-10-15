@@ -23,7 +23,7 @@ namespace Simple3D {
 
 		VkPipeline			GetPipeline();
 		VkPipelineLayout	GetLayout();
-		void				updateUniformBuffer(uint32_t currentImage, glm::mat4 PerspectiveMatrix, glm::mat4 ViewMatrix, glm::mat4 transform, glm::vec3 CameraPos);
+		void				updateUniformBuffer(uint32_t currentImage, uint32_t objectIndex, glm::mat4 PerspectiveMatrix, glm::mat4 ViewMatrix, glm::mat4 transform, glm::vec3 CameraPos);
 		void				updateLights(uint32_t currentImage, const std::vector<Light>& lights);
 
 
@@ -55,6 +55,15 @@ namespace Simple3D {
 		std::vector<VkBuffer> uniformBuffers;
 		std::vector<VkDeviceMemory> uniformBuffersMemory;
 		std::vector<void*> uniformBuffersMapped;
+
+		// dynamic UBO stuff
+		size_t dynamicAlignment = 0;
+		VkDeviceSize dynamicBufferSize = 0;
+		uint32_t maxObjects = 1024; // tweak to expected max objects per material
+		std::vector<VkBuffer> dynamicUniformBuffers;             // per-frame big buffer
+		std::vector<VkDeviceMemory> dynamicUniformBuffersMemory;
+		std::vector<void*> dynamicUniformBuffersMapped;
+
 
 		// Lights
 		std::vector<VkBuffer> lightBuffers;

@@ -22,7 +22,7 @@
 namespace Simple3D {
 	class Renderer {
 	public:
-// Changes based on if you use SDL or GLFW for windowing
+		// Changes based on if you use SDL or GLFW for windowing
 #ifdef SDL_WINDOW
 		Renderer(SDL_Window* window, std::string EngineName, std::string ApplicationName)
 			: window(window) {
@@ -30,7 +30,7 @@ namespace Simple3D {
 			int width, height;
 			SDL_GetWindowSize(window, &width, &height);
 			// Get required extensions from SDL
-	
+
 			// Step 1: Query the number of extensions needed
 			if (!SDL_Vulkan_GetInstanceExtensions(window, &WindowExtensionCount, nullptr)) {
 				SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
@@ -69,7 +69,7 @@ namespace Simple3D {
 			createCommandPool();
 
 			// Create depth buffer
-			depthBuffer = new DepthBuffer(RenderDevice, swapChain, &commandPool);
+			depthBuffer = new DepthBuffer(RenderDevice, swapChain->GetSwapChainExtent(), &commandPool);
 
 			// Create frame buffers
 			createFramebuffers();
@@ -78,7 +78,10 @@ namespace Simple3D {
 
 			// Create sync objects
 			createSyncObjects();
-	}
+
+			lastWidth = width;
+			lastHeight = height;
+		}
 
 		int GetWindowWidth() {
 			int width;
@@ -99,47 +102,35 @@ namespace Simple3D {
 	private:
 		SDL_Window* window;
 	public:
-#else
-		// GLFW specific Constructor
-		Renderer(GLFWwindow* window, std::string EngineName, std::string ApplicationName) 
-			: window(window) {
-			// Get Information from window
-			int width, height;
+#else // ---------- GLFW WINDOWING ----------
 
-			WindowExtensions = glfwGetRequiredInstanceExtensions(&WindowExtensionCount);
+		Renderer(GLFWwindow* window, std::string EngineName, std::string ApplicationName)
+			: window(window)
+		{
+			int width, height;
 			glfwGetFramebufferSize(window, &width, &height);
 
-			// Create Instance
+			WindowExtensions = glfwGetRequiredInstanceExtensions(&WindowExtensionCount);
+
 			CreateInstance(EngineName, ApplicationName);
 
-			// Create Window Surface
-			if (glfwCreateWindowSurface(instance, window, nullptr, &surface) != VK_SUCCESS) { 
-				printf("failed to create window surface!");
-				throw std::runtime_error("failed to create window surface!"); 
+			if (glfwCreateWindowSurface(instance, window, nullptr, &surface) != VK_SUCCESS) {
+				throw std::runtime_error("Failed to create window surface!");
 			}
 
-			// Create device & swapchain
 			RenderDevice = new Device(instance, surface);
 			swapChain = new SwapChain(*RenderDevice, surface, width, height);
 
-			// Create render pass
 			CreateRenderPass();
-
-			// Create Command Buffers
 			createCommandPool();
-
-			// Create depth buffer
 			depthBuffer = new DepthBuffer(RenderDevice, swapChain, &commandPool);
-
-			// Create frame buffers
 			createFramebuffers();
-
 			createCommandBuffer();
-
-			// Create sync objects
 			createSyncObjects();
-		}
 
+			lastWidth = width;
+			lastHeight = height;
+		}
 
 		int GetWindowWidth() {
 			int width;
@@ -157,10 +148,20 @@ namespace Simple3D {
 			return glfwGetWindowAttrib(window, GLFW_ICONIFIED);
 		}
 
-		// GLFW window
-		private:
+		bool WindowResized() {
+			int width, height;
+			glfwGetFramebufferSize(window, &width, &height);
+			if (width != lastWidth || height != lastHeight) {
+				lastWidth = width;
+				lastHeight = height;
+				return true;
+			}
+			return false;
+		}
+
+	private:
 		GLFWwindow* window;
-		public:
+	public:
 #endif
 
 
@@ -230,10 +231,10 @@ namespace Simple3D {
 			info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
 			info.RenderPass = renderPass;
 
-			info.PipelineRenderingCreateInfo = {}; 
-			info.PipelineRenderingCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO; 
-			info.PipelineRenderingCreateInfo.colorAttachmentCount = 1; 
-			info.PipelineRenderingCreateInfo.pColorAttachmentFormats = &swapChain->GetSwapChainImageFormat(); 
+			info.PipelineRenderingCreateInfo = {};
+			info.PipelineRenderingCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
+			info.PipelineRenderingCreateInfo.colorAttachmentCount = 1;
+			info.PipelineRenderingCreateInfo.pColorAttachmentFormats = &swapChain->GetSwapChainImageFormat();
 
 			return info;
 		}
@@ -384,7 +385,7 @@ namespace Simple3D {
 		// Models and lights
 		std::vector<RenderInstance*> RenderInstances;
 		std::vector<RenderTexture*> RenderTextures;
-		
+
 
 
 #ifdef USEIMGUI
@@ -424,5 +425,30 @@ namespace Simple3D {
 
 		// Clean up all objects related to swapchain
 		void cleanupSwapChain();
+
+
+
+
+		int lastWidth = 0;
+		int lastHeight = 0;
+
+		bool WindowResized() {
+			int currentWidth = 0, currentHeight = 0;
+
+#ifdef SDL_WINDOW
+			SDL_GetWindowSize(window, &currentWidth, &currentHeight);
+#else
+			glfwGetFramebufferSize(window, &currentWidth, &currentHeight);
+#endif
+
+			// Check if the size actually changed
+			if (currentWidth != lastWidth || currentHeight != lastHeight) {
+				lastWidth = currentWidth;
+				lastHeight = currentHeight;
+				return true;
+			}
+
+			return false;
+		}
 	};
 }

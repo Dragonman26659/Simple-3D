@@ -13,9 +13,7 @@ struct Light {
     vec3 direction;
 
     // Intensity and color properties (48 bytes, 16-byte aligned)
-    vec3 ambientColor;
-    vec3 diffuseColor;
-    vec3 specularColor;
+    vec3 Color;
     float intensity;
 
     // Shadow properties (8 bytes, 4-byte aligned)
@@ -25,11 +23,6 @@ struct Light {
     // Spotlight properties (8 bytes, 4-byte aligned)
     float cutoffAngle;
     float outerCutoffAngle;
-
-    // Attenuation parameters (12 bytes, 4-byte aligned)
-    float constantAttenuation;
-    float linearAttenuation;
-    float quadraticAttenuation;
 };
 
 // Input color and texture coordinate
@@ -49,111 +42,64 @@ layout(std430, binding = 2) buffer LightBuffer {
     Light lights[];
 };
 
-
-
-
-// Data for color
-float AO            =    texture(textureSamplers[0], UV).r;
-vec3 Albedo         =    texture(textureSamplers[1], UV).rgb;
-float Metallic      =    texture(textureSamplers[2], UV).r;
-vec3 NormalMap      =    texture(textureSamplers[3], UV).rgb;
-float Roughness     =    texture(textureSamplers[4], UV).r;
-
-
-vec3 viewDir = normalize(cameraPos - fragPos);
-vec3 globalAmbient = vec3(0.1);
-
-
 // -------------------- Helpers (GGX / Fresnel / Geometry) --------------------
 
-vec3 getNormal()
+vec3 getNormal(vec3 normalMap)
 {
-    vec3 Nmap = NormalMap * 2.0 - 1.0;
+    vec3 Nmap = normalize(normalMap * 2.0 - 1.0);
+
     vec3 N = normalize(Normal_Face);
     vec3 T = normalize(tangent.xyz - dot(tangent.xyz, N) * N);
     vec3 B = normalize(cross(N, T)) * tangent.w;
+
     mat3 TBN = mat3(T, B, N);
+
+    // Transform and normalize the normal map vector into world space
     return normalize(TBN * Nmap);
 }
 
-float D_GGX(vec3 N, vec3 H, float roughness)
-{
-    float a = roughness * roughness;
-    float a2 = a * a;
+
+// Normal distrobution function
+float D(float alpha, vec3 N, vec3 H) {
+    float numerator = pow(alpha, 2.0f);
+
     float NdotH = max(dot(N, H), 0.0);
-    float NdotH2 = NdotH * NdotH;
-    float denom = (NdotH2 * (a2 - 1.0) + 1.0);
-    denom = PI * denom * denom;
-    return a2 / max(denom, 1e-6);
-}
+    float denom = PI * pow(pow(NdotH, 2.0f) * (alpha - 1.0) + 1.0, 2.0f);
 
-float G_SchlickGGX(float NdotX, float roughness)
-{
-    // Use UE/Disney style remap for k
-    float r = (roughness + 1.0);
-    float k = (r * r) / 8.0;
-    return NdotX / (NdotX * (1.0 - k) + k);
-}
+    // Prevent div by zero
+    denom = max(denom, 0.00000001);
 
-float G_Smith(vec3 N, vec3 V, vec3 L, float roughness)
-{
-    float NdotV = max(dot(N, V), 0.0);
-    float NdotL = max(dot(N, L), 0.0);
-    float ggx1 = G_SchlickGGX(NdotV, roughness);
-    float ggx2 = G_SchlickGGX(NdotL, roughness);
-    return ggx1 * ggx2;
-}
-
-vec3 fresnelSchlick(float cosTheta, vec3 F0)
-{
-    return F0 + (1.0 - F0) * pow(1.0 - cosTheta, 5.0);
-}
-
-// Cook-Torrance specular (returns RGB)
-vec3 CookTorranceSpecular(vec3 N, vec3 V, vec3 L, vec3 F0, float roughness)
-{
-    vec3 H = normalize(V + L);
-    float NdotV = max(dot(N, V), 0.0);
-    float NdotL = max(dot(N, L), 0.0);
-    float NdotH = max(dot(N, H), 0.0);
-    float VdotH = max(dot(V, H), 0.0);
-
-    float D = D_GGX(N, H, roughness);
-    float G = G_Smith(N, V, L, roughness);
-    vec3  F = fresnelSchlick(VdotH, F0);
-
-    // Cook-Torrance: (D * G * F) / (4 * NdotV * NdotL)
-    vec3 numerator = D * G * F;
-    float denom = max(4.0 * NdotV * NdotL, 0.001);
     return numerator / denom;
 }
 
 
-// -------------------- BRDF (energy conserving) --------------------
+float G1(float alpha, vec3 N, vec3 X) {
+    float numerator = max(dot(N, X), 0.0);
 
-// Compute diffuse and specular contribution given N, V, L
-void EvaluateBRDF(
-    vec3 N, vec3 V, vec3 L,
-    out vec3 diffuseOut, out vec3 specularOut)
+
+    float k = alpha / 2.0f;
+    float denom = max(dot(N, X), 0.0) * (1 - k) + k;
+    denom = max(denom, 0.00001);
+
+    return numerator / denom;
+}
+
+// Geometry shadowing function
+float G(float alpha, vec3 N, vec3 V, vec3 L) {
+    return G1(alpha, N, V) * G1(alpha, N, L);
+}
+
+// frensnel slick function
+vec3 Fresnel(vec3 F0, vec3 V, vec3 H) {
+    return F0 + (vec3(1.0) - F0) * pow(1 - max(dot(V, H), 0.0), 5.0);
+}
+
+
+float attenuate(float distance, float intensity)
 {
-    // Perceptual -> linear roughness is already given; we use it directly.
-    float rough = clamp(Roughness, 0.0001, 1.0);
-
-    // F0: base reflectance at normal incidence (metals use albedo)
-    vec3 dielectricF0 = vec3(0.04);
-    vec3 F0 = mix(dielectricF0, Albedo, Metallic);
-
-    // Energy-conserving diffuse term (per-channel)
-    vec3 kd = (vec3(1.0) - F0) * (1.0 - Metallic); // when metallic==1, kd -> 0
-
-    // Lambert diffuse
-    vec3 diffuseBRDF = kd * Albedo / PI;
-
-    // Specular (Cook-Torrance)
-    vec3 specBRDF = CookTorranceSpecular(N, V, L, F0, rough);
-
-    diffuseOut = diffuseBRDF;
-    specularOut = specBRDF;
+    // simple smooth falloff:
+    float d = max(distance, 1.0);
+    return 1.0f / (max(d*d, 0.00001));
 }
 
 
@@ -161,55 +107,74 @@ void EvaluateBRDF(
 
 vec3 EvaluateLightContribution(Light light)
 {
-    vec3 N = getNormal();
-    vec3 V = normalize(viewDir);
-    vec3 L;
-    float attenuation = 1.0;
+    // Data for color (Add emmisive later)
+    float AO            =    texture(textureSamplers[0], UV).r;
+    vec3 Albedo         =    texture(textureSamplers[1], UV).rgb;
+    float Metallic      =    texture(textureSamplers[3], UV).r;
+    vec3 NormalMap      =    texture(textureSamplers[4], UV).rgb;
+    float Roughness     =    texture(textureSamplers[5], UV).r;
 
-    // Directional
-    if (light.type == 3) {
+    Albedo = Albedo * fragColor;
+
+    vec3 viewDir = normalize(cameraPos - fragPos);
+    vec3 globalAmbient = vec3(0.001);
+    vec3 F0 = mix(vec3(0.04), Albedo, Metallic);
+
+
+
+    // Main information
+    vec3 N = getNormal(NormalMap);
+    vec3 V = normalize(cameraPos - fragPos);
+    vec3 L = normalize(light.position - fragPos);
+
+    // If using directional light use the direction from light object
+    if (light.type == 3)
         L = normalize(-light.direction);
-    } else {
-        vec3 toLight = light.position - fragPos;
-        float dist = length(toLight);
-        L = normalize(toLight);
 
-        attenuation = 1.0 / (light.constantAttenuation +
-                             light.linearAttenuation * dist +
-                             light.quadraticAttenuation * dist * dist);
+    vec3 H = normalize(V + L);
 
-        // Spotlight falloff
-        if (light.type == 2) {
-            float theta = dot(L, normalize(-light.direction));
-            float epsilon = light.cutoffAngle - light.outerCutoffAngle;
-            float intensity = clamp((theta - light.outerCutoffAngle) / max(epsilon, 1e-4), 0.0, 1.0);
-            attenuation *= intensity;
-        }
+    // Rendering equation
+    vec3 ks = Fresnel(F0, V, H);
+    vec3 kd = vec3(1.0) - ks;
+
+    // Apply metals
+    kd = kd * (1 - Metallic);
+
+
+    vec3 lambert = Albedo / PI;
+    float alpha = Roughness * Roughness;
+
+    vec3 CookTorranceNumerator = D(alpha, N, H) * G(alpha, N, V, L) * Fresnel(F0, V, H);
+    float CookTorranceDenomenator = 4.0 * max(dot(V, N), 0.00) * max(dot(L, N), 0.00);
+    CookTorranceDenomenator = max(CookTorranceDenomenator, 0.001);
+    vec3 CookTorrance = CookTorranceNumerator / CookTorranceDenomenator;
+
+    vec3 BRDF = kd * lambert * AO + CookTorrance;
+
+
+    float intensity =  1.0f;
+
+    // -------------------- Intensity ---------------------------
+    if (light.type != 3) {
+        float dist = length(light.position - fragPos);
+        intensity = attenuate(dist, light.intensity);
     }
 
-    float NdotL = max(dot(N, L), 0.0);
-    if (NdotL <= 0.0)
-        return vec3(0.0);
 
-    // BRDF components
-    vec3 diffuseBRDF;
-    vec3 specularBRDF;
-    EvaluateBRDF(N, V, L, diffuseBRDF, specularBRDF);
+    // -------------------- Spotlight cutoff --------------------
+    if (light.type == 2) { // Assume type 2 = spotlight
+        float inner = cos(light.cutoffAngle * (PI / 180));
+        float outer = cos(light.outerCutoffAngle * (PI / 180));
 
-    // Radiance from light (use diffuseColor for incoming spectral radiance)
-    vec3 radiance = light.diffuseColor * light.intensity * attenuation;
+        float angle = dot(normalize(-light.direction), L);
+        intensity *= clamp((angle - outer) / (inner - outer), 0.0f, 1.0f);
+    }
 
-    // Direct lighting: diffuse + specular
-    vec3 diffuseTerm  = diffuseBRDF * radiance * NdotL;        // (kd * albedo/pi) * L * NdotL
-    vec3 specularTerm = specularBRDF * light.specularColor * light.intensity * attenuation * NdotL;
+    vec3 radiance = light.Color * intensity;
 
-    // Ambient contribution per-light (small, energy-conserving)
-    // Use ambientColor to add a small ambient irradiance. For energy conservation,
-    // diffuse ambient should be limited by kd and AO.
-    // --- Ambient: combine per-light ambient + global ambient ---
-    vec3 ambientTerm = ((light.ambientColor) + globalAmbient) * Albedo * (1.0 - Metallic);
+    vec3 lighting = BRDF * radiance * max(dot(L, N), 0.0);
 
-    return ambientTerm ;
+    return lighting;
 }
 
 
@@ -217,17 +182,21 @@ vec3 EvaluateLightContribution(Light light)
 
 void main()
 {
+    vec3 Emissive       =    texture(textureSamplers[2], UV).rgb;
+
     vec3 totalColor = vec3(0.0);
-    for (int i = 0; i < lights.length(); ++i) {
+    for (int i = 0; i < MAX_LIGHTS; ++i) {
         if (lights[i].type != 0)
             totalColor += EvaluateLightContribution(lights[i]);
     }
 
-    // No extra multiplication by Albedo here
-    vec3 color = totalColor;
+    vec3 color = totalColor + Emissive;
 
     // Tone mapping + gamma
     color = color / (color + vec3(1.0));
     color = pow(color, vec3(1.0/2.2));
+
+
+    // Output final color
     outColor = vec4(color, 1.0);
 }

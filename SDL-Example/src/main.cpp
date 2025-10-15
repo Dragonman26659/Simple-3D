@@ -18,65 +18,48 @@
 
 #define main main
 
-class FPSCameraController {
+class CameraController {
 private:
     Simple3D::Camera& camera;
-    const float sensitivity = 0.1f;
-    const float moveSpeed = 1.0f;
+    const float sensitivity = 10.0f;
+    const float moveSpeed = 5.0f;
 
 public:
     glm::vec2 lastMousePos = { 0.0f, 0.0f };
     bool mouseLocked = false;
 
-    FPSCameraController(Simple3D::Camera& cam) : camera(cam) {}
+    CameraController(Simple3D::Camera& cam) : camera(cam) {}
 
     void handleInput(float deltatime) {
-
         if (!mouseLocked) return;
 
         const Uint8* key_state = SDL_GetKeyboardState(nullptr);
 
-        // Get current position and rotation
         glm::vec3 pos = camera.getPosition();
-        glm::vec3 rot = camera.getRotation();
 
-        // Movement controls
-        if (key_state[SDL_SCANCODE_W]) {
-            // Move forward along current facing direction
-            float yawRad = glm::radians(rot.y);
-            pos.z += std::cos(yawRad) * moveSpeed * deltatime;
-            pos.x -= std::sin(yawRad) * moveSpeed * deltatime;
-        }
-        if (key_state[SDL_SCANCODE_S]) {
-            // Move backward along current facing direction
-            float yawRad = glm::radians(rot.y);
-            pos.z -= std::cos(yawRad) * moveSpeed * deltatime;
-            pos.x += std::sin(yawRad) * moveSpeed * deltatime;
-        }
-        if (key_state[SDL_SCANCODE_A]) {
-            // Move left perpendicular to facing direction
-            float yawRad = glm::radians(rot.y);
-            pos.x += std::cos(yawRad) * moveSpeed * deltatime;
-            pos.z += std::sin(yawRad) * moveSpeed * deltatime;
-        }
-        if (key_state[SDL_SCANCODE_D]) {
-            // Move right perpendicular to facing direction
-            float yawRad = glm::radians(rot.y);
-            pos.x -= std::cos(yawRad) * moveSpeed * deltatime;
-            pos.z -= std::sin(yawRad) * moveSpeed * deltatime;
-        }
-        if (key_state[SDL_SCANCODE_SPACE]) {
-            pos.y += moveSpeed * deltatime;
-        }
-        if (key_state[SDL_SCANCODE_LSHIFT]) {
-            pos.y -= moveSpeed * deltatime;
-        }
+        // Use camera’s true direction vectors
+        glm::vec3 forward = camera.getForward();
+        glm::vec3 right = camera.getRight();
+        glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
 
-        // Update position
+        // Movement controls (standard FPS convention)
+        if (key_state[SDL_SCANCODE_W])
+            pos += forward * moveSpeed * deltatime;
+        if (key_state[SDL_SCANCODE_S])
+            pos -= forward * moveSpeed * deltatime;
+        if (key_state[SDL_SCANCODE_A])
+            pos -= right * moveSpeed * deltatime;
+        if (key_state[SDL_SCANCODE_D])
+            pos += right * moveSpeed * deltatime;
+        if (key_state[SDL_SCANCODE_SPACE])
+            pos -= up * moveSpeed * deltatime;
+        if (key_state[SDL_SCANCODE_LSHIFT])
+            pos += up * moveSpeed * deltatime;
+
         camera.setPosition(pos);
     }
 
-    void handleMouseEvent(const SDL_Event& event) {
+    void handleMouseEvent(const SDL_Event& event, float dt) {
         if (event.type == SDL_MOUSEMOTION) {
             int mouseX, mouseY;
             SDL_GetMouseState(&mouseX, &mouseY);
@@ -97,8 +80,8 @@ public:
             glm::vec2 mouseDelta = currentMousePos - lastMousePos;
 
             // Calculate new rotation
-            float yaw = mouseDelta.x * sensitivity;
-            float pitch = -mouseDelta.y * sensitivity;
+            float yaw = -mouseDelta.x * sensitivity * dt;
+            float pitch = mouseDelta.y * sensitivity * dt;
 
             // Get current rotation
             glm::vec3 rot = camera.getRotation();
@@ -119,8 +102,10 @@ public:
     }
 
     void handleEvent(const SDL_Event& event, float deltatime) {
-        handleMouseEvent(event);
+
+        handleMouseEvent(event, deltatime);
         handleInput(deltatime);
+
     }
 };
 
@@ -129,7 +114,6 @@ public:
 Simple3D::Model* loadModel(std::string MODEL_PATH) {
     std::vector<Vertex> vertices;
     std::vector<uint32_t> indices;
-    std::unordered_map<Vertex, uint32_t> uniqueVertices;
 
     tinyobj::attrib_t attrib;
     std::vector<tinyobj::shape_t> shapes;
@@ -140,58 +124,100 @@ Simple3D::Model* loadModel(std::string MODEL_PATH) {
         throw std::runtime_error(err);
     }
 
-    // Initialize vertices without tangents first
-    for (const auto& shape : shapes) {
-        for (const auto& index : shape.mesh.indices) {
-            Vertex vertex{};
+    // Helper key to uniquely identify a vertex by its indices (tri-safe, avoids float-key issues)
+    struct IndexKey {
+        int vi, ni, ti;
+        bool operator==(IndexKey const& o) const noexcept {
+            return vi == o.vi && ni == o.ni && ti == o.ti;
+        }
+    };
+    struct IndexKeyHash {
+        size_t operator()(IndexKey const& k) const noexcept {
+            uint64_t a = static_cast<uint64_t>(k.vi + 0x9e3779b9);
+            uint64_t b = static_cast<uint64_t>(k.ni + 0x9e3779b9);
+            uint64_t c = static_cast<uint64_t>(k.ti + 0x9e3779b9);
+            uint64_t h = a;
+            h ^= b + 0x9e3779b97f4a7c15ULL + (h << 6) + (h >> 2);
+            h ^= c + 0x9e3779b97f4a7c15ULL + (h << 6) + (h >> 2);
+            return static_cast<size_t>(h);
+        }
+    };
 
-            // Position
-            vertex.pos = {
-                attrib.vertices[3 * index.vertex_index + 0],
-                attrib.vertices[3 * index.vertex_index + 1],
-                attrib.vertices[3 * index.vertex_index + 2]
-            };
+    std::unordered_map<IndexKey, uint32_t, IndexKeyHash> uniqueVertices;
+
+    // Build vertices/indices using index-key deduping (no float hashing)
+    for (const auto& shape : shapes) {
+        for (const auto& idx : shape.mesh.indices) {
+            IndexKey key{ idx.vertex_index, idx.normal_index, idx.texcoord_index };
+
+            auto it = uniqueVertices.find(key);
+            if (it != uniqueVertices.end()) {
+                indices.push_back(it->second);
+                continue;
+            }
+
+            Vertex vertex{}; // default-initialized; ensure Vertex ctor zeroes tangent if needed
+
+            // Position (guard against missing or out-of-range indices)
+            if (key.vi >= 0 && (size_t)(3 * key.vi + 2) < attrib.vertices.size()) {
+                vertex.pos = {
+                    attrib.vertices[3 * key.vi + 0],
+                    attrib.vertices[3 * key.vi + 1],
+                    attrib.vertices[3 * key.vi + 2]
+                };
+            }
+            else {
+                vertex.pos = glm::vec3(0.0f);
+            }
 
             // Normal
-            if (index.normal_index >= 0) {
+            if (key.ni >= 0 && (size_t)(3 * key.ni + 2) < attrib.normals.size()) {
                 vertex.normal = {
-                    attrib.normals[3 * index.normal_index + 0],
-                    attrib.normals[3 * index.normal_index + 1],
-                    attrib.normals[3 * index.normal_index + 2]
+                    attrib.normals[3 * key.ni + 0],
+                    attrib.normals[3 * key.ni + 1],
+                    attrib.normals[3 * key.ni + 2]
                 };
             }
             else {
                 vertex.normal = glm::vec3(0.0f, 0.0f, 1.0f);
             }
 
-            // Texture coordinates
-            if (index.texcoord_index >= 0) {
+            // TexCoord (flip V)
+            if (key.ti >= 0 && (size_t)(2 * key.ti + 1) < attrib.texcoords.size()) {
                 vertex.texCoord = {
-                    attrib.texcoords[2 * index.texcoord_index + 0],
-                    1.0f - attrib.texcoords[2 * index.texcoord_index + 1]
+                    attrib.texcoords[2 * key.ti + 0],
+                    1.0f - attrib.texcoords[2 * key.ti + 1]
                 };
             }
             else {
                 vertex.texCoord = glm::vec2(0.0f, 0.0f);
             }
 
-            // Color: use vertex color if present
+            // Color fallback (keep your original behavior)
             vertex.color = glm::vec3(1.0f, 1.0f, 1.0f);
 
-            // Push vertex
-            if (uniqueVertices.count(vertex) == 0) {
-                uniqueVertices[vertex] = static_cast<uint32_t>(vertices.size());
-                vertices.push_back(vertex);
-            }
-            indices.push_back(uniqueVertices[vertex]);
+            uint32_t newIndex = static_cast<uint32_t>(vertices.size());
+            vertices.push_back(vertex);
+            uniqueVertices.emplace(key, newIndex);
+            indices.push_back(newIndex);
         }
     }
 
-    // Calculate tangents per triangle
-    for (size_t i = 0; i < indices.size(); i += 3) {
-        Vertex& v0 = vertices[indices[i + 0]];
-        Vertex& v1 = vertices[indices[i + 1]];
-        Vertex& v2 = vertices[indices[i + 2]];
+    // Prepare accumulators for tangents & bitangents (we cannot change Vertex layout)
+    std::vector<glm::vec3> tangentAccum(vertices.size(), glm::vec3(0.0f));
+    std::vector<glm::vec3> bitangentAccum(vertices.size(), glm::vec3(0.0f));
+
+    // Calculate tangents and bitangents per triangle
+    const float EPSILON = 1e-8f;
+    const float EPSILON_SQR = EPSILON * EPSILON;
+    for (size_t i = 0; i + 2 < indices.size(); i += 3) {
+        uint32_t i0 = indices[i + 0];
+        uint32_t i1 = indices[i + 1];
+        uint32_t i2 = indices[i + 2];
+
+        const Vertex& v0 = vertices[i0];
+        const Vertex& v1 = vertices[i1];
+        const Vertex& v2 = vertices[i2];
 
         glm::vec3 edge1 = v1.pos - v0.pos;
         glm::vec3 edge2 = v2.pos - v0.pos;
@@ -199,37 +225,68 @@ Simple3D::Model* loadModel(std::string MODEL_PATH) {
         glm::vec2 deltaUV2 = v2.texCoord - v0.texCoord;
 
         float det = deltaUV1.x * deltaUV2.y - deltaUV2.x * deltaUV1.y;
-        if (fabs(det) < 1e-6f) continue;
+        if (std::fabs(det) < EPSILON) {
+            // Degenerate UVs for this triangle — skip accumulation for this tri.
+            continue;
+        }
 
         float f = 1.0f / det;
 
         glm::vec3 tangent = f * (deltaUV2.y * edge1 - deltaUV1.y * edge2);
         glm::vec3 bitangent = f * (-deltaUV2.x * edge1 + deltaUV1.x * edge2);
 
-        tangent = glm::normalize(tangent);
-        bitangent = glm::normalize(bitangent);
+        // Accumulate (do not normalize yet)
+        tangentAccum[i0] += tangent;
+        tangentAccum[i1] += tangent;
+        tangentAccum[i2] += tangent;
 
-        // accumulate
-        v0.tangent += glm::vec4(tangent, 0.0f);
-        v1.tangent += glm::vec4(tangent, 0.0f);
-        v2.tangent += glm::vec4(tangent, 0.0f);
+        bitangentAccum[i0] += bitangent;
+        bitangentAccum[i1] += bitangent;
+        bitangentAccum[i2] += bitangent;
     }
 
-    // Normalize and compute handedness per vertex
-    for (auto& vertex : vertices) {
-        glm::vec3 N = glm::normalize(vertex.normal);
-        glm::vec3 T = glm::normalize(glm::vec3(vertex.tangent));
+    // Normalize, orthogonalize and compute handedness per-vertex, write into vertex.tangent (vec4)
+    for (size_t vi = 0; vi < vertices.size(); ++vi) {
+        Vertex& vert = vertices[vi];
 
-        // Orthogonalize T to N
-        T = glm::normalize(T - N * glm::dot(N, T));
+        glm::vec3 N = glm::normalize(vert.normal);
+        glm::vec3 T = tangentAccum[vi];
+        glm::vec3 B = bitangentAccum[vi];
 
-        // Compute bitangent using triangle UVs (approximation)
-        glm::vec3 B = glm::normalize(glm::cross(N, T));
+        // If the accumulated tangent is nearly zero (no valid tri or degenerate), build a fallback
+        if (glm::dot(T, T) < EPSILON_SQR) {
+            // produce some tangent orthogonal to N
+            glm::vec3 up = glm::abs(N.y) < 0.999f ? glm::vec3(0.0f, 1.0f, 0.0f) : glm::vec3(1.0f, 0.0f, 0.0f);
+            T = glm::normalize(glm::cross(up, N));
+            // No reliable bitangent available; compute from cross
+            B = glm::normalize(glm::cross(N, T));
+        }
+        else {
+            // Orthogonalize T against N and normalize
+            T = T - N * glm::dot(N, T);
+            if (glm::dot(T, T) < EPSILON_SQR) {
+                // fallback if orthogonalization collapsed
+                glm::vec3 up = glm::abs(N.y) < 0.999f ? glm::vec3(0.0f, 1.0f, 0.0f) : glm::vec3(1.0f, 0.0f, 0.0f);
+                T = glm::normalize(glm::cross(up, N));
+            }
+            else {
+                T = glm::normalize(T);
+            }
 
-        // Determine handedness (sign)
+            // If no reliable accumulated bitangent, recompute approximation
+            if (glm::dot(B, B) < EPSILON_SQR) {
+                B = glm::normalize(glm::cross(N, T));
+            }
+            else {
+                B = glm::normalize(B);
+            }
+        }
+
+        // Compute handedness: +1 or -1
         float handedness = (glm::dot(glm::cross(N, T), B) < 0.0f) ? -1.0f : 1.0f;
 
-        vertex.tangent = glm::vec4(T, handedness);
+        // Store tangent.xyz = T and tangent.w = handedness (float)
+        vert.tangent = glm::vec4(T, handedness);
     }
 
     return new Simple3D::Model(vertices, indices);
@@ -270,7 +327,7 @@ int main() {
 
     // Setup camera
     Simple3D::Camera* mainCam = new Simple3D::Camera();
-    FPSCameraController cameraController(*mainCam);
+    CameraController cameraController(*mainCam);
 
 #ifdef USEIMGUI
     renderer->initImgui();
@@ -309,9 +366,7 @@ int main() {
     myLight->castShadows = false;
 
     // Color setup
-    myLight->ambientColor = glm::vec3(0.05f, 0.05f, 0.05f); // subtle ambient tint
-    myLight->diffuseColor = glm::vec3(1.0f, 1.0f, 1.0f);     // white diffuse light
-    myLight->specularColor = glm::vec3(1.0f, 1.0f, 1.0f);     // white highlights
+    myLight->Color = glm::vec3(1.0f, 1.0f, 1.0f); // subtle ambient tint
 
     // Intensity and position
     myLight->intensity = 0.3f;
@@ -328,11 +383,6 @@ int main() {
     myLight->cutoffAngle = 0.0f;
     myLight->outerCutoffAngle = 0.0f;
 
-    // Attenuation (how light fades over distance)
-    myLight->constantAttenuation = 1.0f;
-    myLight->linearAttenuation = 0.09f;
-    myLight->quadraticAttenuation = 0.032f;
-
 
     // Load model
     Simple3D::Model* myModel = loadModel("meteor.obj");
@@ -345,6 +395,7 @@ int main() {
     info.textures["Normal"] = ("textures/asteroid_normal.jpg");
     info.textures["Roughness"] = ("textures/asteroid_rough.jpg");
     info.textures["Metalic"] = ("textures/black.jpeg"); // No metalic
+    info.textures["Emissive"] = ("textures/black.jpeg"); // No emmision
     info.textures["AO"] = ("textures/white.jpg"); // No AO
     info.isLit = true;
 
@@ -354,7 +405,6 @@ int main() {
     myModel->BindMaterial(material);
     myModel->SetTransform(glm::rotate(glm::mat4(1.0f), glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f)));
     myModel->SetTransform(glm::rotate(myModel->GetTransform(), glm::radians(-90.0f), glm::vec3(0.0f, 0.0f, 1.0f)));
-
 
 
     // Set camera position
@@ -371,6 +421,17 @@ int main() {
     // Main loop
     bool running = true;
     SDL_Event event;
+
+
+
+
+
+    // Display the texture as a thumbnail
+    ImTextureID texID = (ImTextureID)ImGui_ImplVulkan_AddTexture(
+        ImguiTexture->getBinding()->sampler,
+        ImguiTexture->getBinding()->view,
+        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+    );
 
 
     // Framerate
@@ -393,9 +454,6 @@ int main() {
         }
 
 #ifdef USEIMGUI
-        renderer->SumbitModelToFrame(myModel, ImguiInstance);
-        renderer->SubmitLightToFrame(*myLight, ImguiInstance);
-
 
 
         // Only bother rendering imgui if the window is actuale able to draw
@@ -409,26 +467,15 @@ int main() {
                 myLight->type = static_cast<Simple3D::LightType>(currentType);
             }
 
-            // --- Light Colors ---
-            ImGui::SeparatorText("Color");
-            ImGui::ColorEdit3("Ambient", (float*)&myLight->ambientColor);
-            ImGui::ColorEdit3("Diffuse", (float*)&myLight->diffuseColor);
-            ImGui::ColorEdit3("Specular", (float*)&myLight->specularColor);
-
-            // --- Intensity ---
-            ImGui::SeparatorText("Intensity");
+            // --- Base lighting info ---
+            ImGui::SeparatorText("Base information");
+            ImGui::ColorEdit3("Color", (float*)&myLight->Color);
             ImGui::SliderFloat("Intensity", &myLight->intensity, 0.0f, 10.0f, "%.2f");
 
             // --- Position & Direction ---
             ImGui::SeparatorText("Transform");
             ImGui::DragFloat3("Position", (float*)&myLight->position, 0.1f);
             ImGui::DragFloat3("Direction", (float*)&myLight->direction, 0.1f);
-
-            // --- Attenuation ---
-            ImGui::SeparatorText("Attenuation");
-            ImGui::SliderFloat("Constant", &myLight->constantAttenuation, 0.0f, 2.0f, "%.3f");
-            ImGui::SliderFloat("Linear", &myLight->linearAttenuation, 0.0f, 1.0f, "%.3f");
-            ImGui::SliderFloat("Quadratic", &myLight->quadraticAttenuation, 0.0f, 1.0f, "%.3f");
 
             // --- Spot Angles (if spotlight) ---
             if (myLight->type == Simple3D::spot) {
@@ -455,6 +502,71 @@ int main() {
 
             ImGui::End();
 
+
+// ===========================
+// Material Texture Viewer
+// ===========================
+            ImGui::Begin("Material Textures");
+
+            if (material) {
+                ImGui::Text("Vertex Shader: %s", material->vertexSource.c_str());
+                ImGui::Text("Fragment Shader: %s", material->FragmentSource.c_str());
+                ImGui::Separator();
+
+                // Show whether it's lit
+                ImGui::Text("Lighting Enabled: %s", material->isLit ? "Yes" : "No");
+                ImGui::Separator();
+
+                // Iterate all textures in the material
+                for (const auto& texPair : material->textures) {
+                    const std::string& texName = texPair.first;
+                    const Simple3D::TextureBinding& texBinding = texPair.second;
+
+                    ImGui::Text("%s", texName.c_str());
+
+                    // Register this texture for ImGui if not already
+                    static std::unordered_map<VkImageView, ImTextureID> imguiTextureIDs;
+                    if (imguiTextureIDs.find(texBinding.view) == imguiTextureIDs.end()) {
+                        ImTextureID id = (ImTextureID)ImGui_ImplVulkan_AddTexture(
+                            texBinding.sampler,
+                            texBinding.view,
+                            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                        );
+                        imguiTextureIDs[texBinding.view] = id;
+                    }
+
+                    // Display the texture as a thumbnail
+                    ImTextureID texID = imguiTextureIDs[texBinding.view];
+                    float thumbSize = 96.0f;
+                    ImGui::Image(texID, ImVec2(thumbSize, thumbSize));
+
+                    // Optional tooltip preview
+                    if (ImGui::IsItemHovered()) {
+                        ImGui::BeginTooltip();
+                        ImGui::Text("Size: %dx%d", texBinding.width, texBinding.height);
+                        ImGui::Image(texID, ImVec2(thumbSize * 2, thumbSize * 2));
+                        ImGui::EndTooltip();
+                    }
+
+                    ImGui::Separator();
+                }
+            }
+            else {
+                ImGui::Text("No material loaded.");
+            }
+
+            ImGui::End();
+
+
+
+            ImGui::Begin("RTT View");
+
+           ImGui::Image(texID, ImVec2(ImguiTexture->getExtent().width, ImguiTexture->getExtent().height));
+
+
+
+            ImGui::End();
+
             ImGui::Render();
         }
 #endif // USEIMGUI
@@ -462,8 +574,14 @@ int main() {
 
 
 
+
+        // Render all models
         renderer->SumbitModelToFrame(myModel, mainInstance);
         renderer->SubmitLightToFrame(*myLight, mainInstance);
+
+        renderer->SumbitModelToFrame(myModel, ImguiInstance);
+        renderer->SubmitLightToFrame(*myLight, ImguiInstance);
+
         renderer->Render();
 
         lastFrameTime = currentTime;
@@ -488,7 +606,6 @@ int main() {
     delete mainCam;
     delete myLight;
     delete renderer;
-    delete material;
 
     SDL_DestroyWindow(window);
     SDL_Quit();

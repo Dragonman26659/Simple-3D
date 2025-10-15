@@ -48,4 +48,26 @@ namespace Simple3D {
 
 
 	TextureBinding CreateTextureBinding(std::string filepath, Device* r_device, VkCommandPool* r_commandPool);
+
+	static VkDeviceSize getAlignedSize(VkDeviceSize original, VkDeviceSize alignment) {
+		if (alignment == 0) return original;
+		return (original + alignment - 1) & ~(alignment - 1);
+	}
+
+	inline void SetVulkanObjectName(VkDevice device, uint64_t objectHandle, VkObjectType objectType, const char* name) {
+		auto func = (PFN_vkSetDebugUtilsObjectNameEXT)vkGetDeviceProcAddr(device, "vkSetDebugUtilsObjectNameEXT");
+		if (func) {
+			VkDebugUtilsObjectNameInfoEXT nameInfo{};
+			nameInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT;
+			nameInfo.objectType = objectType;
+			nameInfo.objectHandle = objectHandle;
+			nameInfo.pObjectName = name;
+			func(device, &nameInfo);
+		}
+
+	}
+	template<typename T>
+	inline void NameVulkanObject(VkDevice device, T object, VkObjectType type, const std::string& name) {
+		SetVulkanObjectName(device, (uint64_t)object, type, name.c_str());
+	}
 }

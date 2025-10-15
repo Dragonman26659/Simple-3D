@@ -36,6 +36,8 @@ namespace Simple3D {
 		VkPhysicalDevice getPhysicalDevice();
 		VkQueue getVKgraphicsQueue();
 		VkQueue getVKpresentQueue();
+		VkPhysicalDeviceProperties GetProperties();
+		uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) const;
 
 	private:
 		VkInstance& instance;
