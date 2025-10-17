@@ -9,7 +9,7 @@
 #include "Internal/Device.h"
 #include "Internal/SwapChain.h"
 #include "Component/Tools/Material.h"
-
+#include "Internal/DepthBuffer.h"
 
 namespace Simple3D {
 	class RenderTexture {
@@ -17,11 +17,6 @@ namespace Simple3D {
 		VkDeviceMemory imageMemory;
 		VkImageView imageView;
 		VkImage image;
-
-		VkImage depthImage = VK_NULL_HANDLE;
-		VkDeviceMemory depthImageMemory = VK_NULL_HANDLE;
-		VkImageView depthImageView = VK_NULL_HANDLE;
-		VkFormat depthFormat = VK_FORMAT_UNDEFINED;
 
 
 
@@ -43,8 +38,6 @@ namespace Simple3D {
 		void createImageForImageView();
 
 		void createFramebufferForImageView(int width, int height);
-
-		void createDepthResources();
 
 		void setupTransitionResources() {
 			// Create fence for synchronization
@@ -84,10 +77,12 @@ namespace Simple3D {
 		bool TransitionForRead(VkCommandBuffer cmdBuf, uint32_t targetQueueFamily);
 		void waitPreviousTransition();
 
+
+
 		VkImage GetImage() { return image; }
 		VkImageView GetImageView() { return imageView; }
 		VkRenderPass getRenderPass() { return renderPass;  }
 		VkFramebuffer getFrameBuffer() { return framebuffer; }
-		VkImageView getDepthView() { return depthImageView; }
+		VkFormat getFormat() { return format; }
 	};
 }

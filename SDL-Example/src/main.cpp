@@ -109,8 +109,6 @@ public:
     }
 };
 
-
-
 Simple3D::Model* loadModel(std::string MODEL_PATH) {
     std::vector<Vertex> vertices;
     std::vector<uint32_t> indices;
@@ -322,8 +320,6 @@ int main() {
     // Create Objects
     Simple3D::Renderer* renderer = new Simple3D::Renderer(window, "No engine", "SDL Example");
 
-    Simple3D::RenderInstance* mainInstance = renderer->CreateRenderInstance();    
-
 
     // Setup camera
     Simple3D::Camera* mainCam = new Simple3D::Camera();
@@ -335,15 +331,10 @@ int main() {
     Simple3D::RenderTexture* ImguiTexture;
     Simple3D::TextureBinding* ImguiBinding;
     VkDescriptorSet ImguiDiscriptor;
-    Simple3D::RenderInstance* ImguiInstance;
 
 
     // Test render to texture
     ImguiTexture = renderer->CreateRenderTexture(640, 480);
-
-    // Setup the instances
-    ImguiInstance = renderer->CreateRenderInstance(ImguiTexture);
-    ImguiInstance->SetCamera(mainCam);
 
 
 
@@ -413,17 +404,29 @@ int main() {
     mainCam->lookAt(glm::vec3(0.0f));
 
 
+    // Create RenderGraphs
+    Simple3D::RenderGraph* mainGraph = renderer->CreateRenderGraph("Main");
+    Simple3D::RenderTarget mainTarget = Simple3D::RenderTarget();
+    mainTarget.swapchain = renderer->GetSwapChain();
+    mainGraph->AddResource("Swapchain", &mainTarget, true);
 
-    // Add camera to renderer
-    renderer->SubmitMainCamera(mainCam, mainInstance);
-
-
-    // Main loop
-    bool running = true;
-    SDL_Event event;
+    Simple3D::RenderPass* GeometryPass = new Simple3D::GeometryPass(mainCam);
+    GeometryPass->outputResources.push_back("Swapchain");
+    mainGraph->AddPass(GeometryPass);
 
 
 
+#ifdef USEIMGUI
+    
+    Simple3D::RenderGraph* imguiGraph = renderer->CreateRenderGraph("Main");
+    Simple3D::RenderTarget imguiTarget = Simple3D::RenderTarget();
+    imguiTarget.texture = ImguiTexture;
+
+    imguiGraph->AddResource("ImguiTexture", &imguiTarget);
+
+    Simple3D::RenderPass* ImguiGPass = new Simple3D::GeometryPass(mainCam);
+    ImguiGPass->outputResources.push_back("ImguiTexture");
+    imguiGraph->AddPass(ImguiGPass);
 
 
     // Display the texture as a thumbnail
@@ -433,6 +436,15 @@ int main() {
         VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
     );
 
+#endif
+
+
+    renderer->BuildRenderGraphs();
+
+
+    // Main loop
+    bool running = true;
+    SDL_Event event;
 
     // Framerate
     const float targetFrameTime = 1.0f / 60.0f;
@@ -569,18 +581,15 @@ int main() {
 
             ImGui::Render();
         }
+
+
+        renderer->SubmitModel(myModel, imguiGraph);
+        renderer->SubmitLight(myLight, imguiGraph);
+
 #endif // USEIMGUI
 
-
-
-
-
-        // Render all models
-        renderer->SumbitModelToFrame(myModel, mainInstance);
-        renderer->SubmitLightToFrame(*myLight, mainInstance);
-
-        renderer->SumbitModelToFrame(myModel, ImguiInstance);
-        renderer->SubmitLightToFrame(*myLight, ImguiInstance);
+        renderer->SubmitModel(myModel, mainGraph);
+        renderer->SubmitLight(myLight, mainGraph);
 
         renderer->Render();
 

@@ -3,54 +3,58 @@
 
 
 namespace Simple3D {
-    GeometryPass::GeometryPass(Device* device, Camera* camera) {
+    GeometryPass::GeometryPass(Camera* camera) {
         this->type = PassType::Render;
         this->name = "GeometryPass";
-        this->device = device;
         this->camera = camera;
     }
 
-    void GeometryPass::Execute(VkCommandBuffer cmd, RenderData data, uint32_t imageIndex) {
+    void GeometryPass::Execute(VkCommandBuffer cmd, const RenderData& data, uint32_t imageIndex) {
         if (!renderInfo.target.IsValid()) {
             throw std::runtime_error("Invalid render target in GeometryPass!");
         }
 
-        const bool renderToTexture = renderInfo.target.texture != nullptr;
-        RenderTexture* targetTexture = renderInfo.target.texture;
-        SwapChain* swapchain = renderInfo.target.swapchain;
+        RenderTarget& target = renderInfo.target;
+        const VkExtent2D extent = target.GetExtent();
 
-        // --- 1. Clear values (color + depth)
-        std::array<VkClearValue, 2> clearValues{};
-        clearValues[0].color = { {0.0f, 0.0f, 0.0f, 1.0f} };
-        clearValues[1].depthStencil = { 1.0f, 0 };
+        // --- 1. Clear values (color + optional depth)
+        std::vector<VkClearValue> clearValues;
+        VkClearValue colorClear{};
+        colorClear.color = { {0.0f, 0.0f, 0.0f, 1.0f} };
+        clearValues.push_back(colorClear);
 
-        // --- 2. Render pass begin info
+        if (target.HasDepth()) {
+            // Confirm they are both the same size
+            if (target.depthTexture->extent.width != extent.width ||
+                target.depthTexture->extent.height != extent.height) {
+                delete target.depthTexture;
+                target.depthTexture = new DepthBuffer(device, extent, commandPool);
+            }
+
+
+            VkClearValue depthClear{};
+            depthClear.depthStencil = { 1.0f, 0 };
+            clearValues.push_back(depthClear);
+        }
+
+        // --- 2. Transition target texture for write (if offscreen)
+        if (target.IsTexture()) {
+            target.texture->TransitionForWrite(cmd, 0);
+        }
+
+        // --- 3. Begin render pass
         VkRenderPassBeginInfo renderPassInfo{};
         renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+        renderPassInfo.renderPass = renderPass;
+        renderPassInfo.framebuffer = renderInfo.GetFrameBuffer(imageIndex);
         renderPassInfo.renderArea.offset = { 0, 0 };
+        renderPassInfo.renderArea.extent = extent;
         renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
         renderPassInfo.pClearValues = clearValues.data();
 
-        VkExtent2D extent{};
-
-        if (renderToTexture) {
-            targetTexture->TransitionForWrite(cmd, 0);
-            renderPassInfo.framebuffer = renderInfo.framebuffer;
-            renderPassInfo.renderPass = renderInfo.renderPass;
-            extent = targetTexture->getExtent();
-        }
-        else {
-            renderPassInfo.framebuffer = renderInfo.framebuffers[imageIndex];
-            renderPassInfo.renderPass = renderInfo.renderPass;
-            extent = swapchain->GetSwapChainExtent();
-        }
-
-        renderPassInfo.renderArea.extent = extent;
-
-        // --- 3. Begin render pass
         vkCmdBeginRenderPass(cmd, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-        // --- 4. Set viewport & scissor
+        // --- 4. Viewport + Scissor
         VkViewport viewport{};
         viewport.x = 0.0f;
         viewport.y = 0.0f;
@@ -66,38 +70,61 @@ namespace Simple3D {
         vkCmdSetViewport(cmd, 0, 1, &viewport);
         vkCmdSetScissor(cmd, 0, 1, &scissor);
 
-        // --- 5. Main Geometry Rendering ---
-        for (auto& [material, pipeline] : renderInfo.materialPipelines) {
+        // --- 5. Main geometry rendering
+        // Group models by material to minimize state changes
+        std::unordered_map<Material*, std::vector<Model*>> modelsByMaterial;
+        for (Model* model : data.models) {
+            modelsByMaterial[model->material].push_back(model);
+        }
+
+        // Render each group of models with the same material
+        for (const auto& [material, modelGroup] : modelsByMaterial) {
+            auto pipeline = renderInfo.materialPipelines[material];
+
+            // Ensure light buffer / descriptors are updated BEFORE binding the set
             pipeline->updateLights(imageIndex, data.lights);
+
             vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->GetPipeline());
 
-            for (Model* model : data.models) {
-                if (model->material != material)
-                    continue;
 
-                if (!model->hasBuffer())
-                    model->CreateBuffers(device, nullptr);
+            // bind descriptors once per material, but still pass dynamic offset per-draw
+            for (size_t idx = 0; idx < modelGroup.size(); ++idx) {
+                Model* model = modelGroup[idx];
 
-                pipeline->updateUniformBuffer(
-                    imageIndex,
-                    0,
-                    camera->getProjectionMatrix((int)extent.width, (int)extent.height),
+                if (!model->hasBuffer()) {
+                    model->CreateBuffers(device, commandPool);
+                }
+
+
+                // update into dynamic UBO slot idx (or some object index assignment logic)
+                pipeline->updateUniformBuffer(imageIndex, static_cast<uint32_t>(idx),
+                    camera->getProjectionMatrix((int)viewport.width, (int)viewport.height),
                     camera->getViewMatrix(),
                     model->GetTransform(),
-                    camera->position
-                );
+                    camera->position);
 
-                uint32_t dynamicOffset = 0;
-                vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                    pipeline->GetLayout(),
-                    0, 1, &pipeline->descriptorSets[imageIndex],
-                    1, &dynamicOffset);
+                // compute dynamic offset in bytes (must be multiple of dynamicAlignment)
+                VkDeviceSize dynamicAlignment = getAlignedSize(sizeof(UniformBufferObject), device->GetProperties().limits.minUniformBufferOffsetAlignment);
+                uint32_t uboOffset = static_cast<uint32_t>(idx * dynamicAlignment);
 
-                VkBuffer vb = model->GetVertexBuffer();
+                if (material->isLit) {
+                    uint32_t lightOffset = 0; // if you don't use per-light offsets, keep 0
+                    uint32_t offsets[2] = { uboOffset, lightOffset };
+                    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->GetLayout(),
+                        0, 1, &pipeline->descriptorSets[imageIndex],
+                        2, offsets);
+                }
+                else {
+                    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->GetLayout(),
+                        0, 1, &pipeline->descriptorSets[imageIndex],
+                        1, &uboOffset);
+                }
+
+                // bind vertex/index buffers & draw
+                VkBuffer vertexBuffers[] = { model->GetVertexBuffer() };
                 VkDeviceSize offsets[] = { 0 };
-                vkCmdBindVertexBuffers(cmd, 0, 1, &vb, offsets);
+                vkCmdBindVertexBuffers(cmd, 0, 1, vertexBuffers, offsets);
                 vkCmdBindIndexBuffer(cmd, model->GetIndexBuffer(), 0, VK_INDEX_TYPE_UINT32);
-
                 vkCmdDrawIndexed(cmd, static_cast<uint32_t>(model->Indices.size()), 1, 0, 0, 0);
             }
         }
@@ -105,9 +132,10 @@ namespace Simple3D {
         // --- 6. End render pass
         vkCmdEndRenderPass(cmd);
 
-        // --- 7. Transition for post-processing / sampling
-        if (renderToTexture)
-            targetTexture->TransitionForRead(cmd, 0);
+        // --- 7. Transition for sampling in post-processing or further passes
+        if (target.IsTexture()) {
+            target.texture->TransitionForRead(cmd, 0);
+        }
     }
 
 }

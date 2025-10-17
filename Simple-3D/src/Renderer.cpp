@@ -15,13 +15,10 @@ std::string vkResultToString(VkResult result) {
 
 
 namespace Simple3D {
-
 	// Actual render loop :0
 	void Renderer::Render() {
 		if (isMinimised()) {
-			for (RenderInstance* instance : RenderInstances) {
-				instance->ClearVectors();
-			}
+			ClearRenderData();
 			return;
 		}
 
@@ -38,6 +35,8 @@ namespace Simple3D {
 			VK_NULL_HANDLE,
 			&imageIndex);
 
+
+		// Handle Window Resizing
 		if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || WindowResized()) {
 			WindoResize();
 		}
@@ -48,8 +47,12 @@ namespace Simple3D {
 
 		// Reset command buffer after fence reset
 		vkResetCommandBuffer(commandBuffers[currentFrame], 0);
+
+		// Record the Command buffer
 		recordCommandBuffer(commandBuffers[currentFrame], imageIndex);
 
+
+		// Submit the frame to screen
 		VkSubmitInfo submitInfo = {};
 		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 
@@ -95,14 +98,10 @@ namespace Simple3D {
 		}
 
 
-		// Render normal renderinstances
-		for (RenderInstance* instance : RenderInstances) {
-			instance->ClearVectors();
-		}
-
-
 
 		currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
+
+		ClearRenderData();
 	}
 
 
@@ -113,8 +112,6 @@ namespace Simple3D {
 		beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 		beginInfo.flags = 0; // Optional 
 		beginInfo.pInheritanceInfo = nullptr; // Optional
-
-
 
 
 
@@ -143,16 +140,9 @@ namespace Simple3D {
 
 
 		// Render All Render to texture instances
-		for (RenderInstance* instance : RenderInstances) {
-			if (instance->RenderToTexture) {
-				instance->recordCommandBuffer(commandBuffer, imageIndex, commandPool, currentFrame, swapChainFramebuffers[imageIndex]);
-			}
-		}
-		// Render normal renderinstances
-		for (RenderInstance* instance : RenderInstances) {
-			if (!instance->RenderToTexture) {
-				instance->recordCommandBuffer(commandBuffer, imageIndex, commandPool, currentFrame, swapChainFramebuffers[imageIndex]);
-			}
+		for (RenderGraph* graph : RenderGraphs) {
+			RenderData& data = renderDataPerGraph[graph];
+			graph->Execute(commandBuffer, data, imageIndex);
 			haveRendered = true;
 		}
 
@@ -176,6 +166,8 @@ namespace Simple3D {
 		}
 
 
+
+// TODO MAKE THIS A PASS IN RENDERGRAPH
 #ifdef USEIMGUI
 		if (usingImgui) {
 			// First barrier: Transition to SHADER_READ_ONLY_OPTIMAL
@@ -255,53 +247,46 @@ namespace Simple3D {
 		}
 	}
 
-
-
-
-	void Renderer::SumbitModelToFrame(Model* model, RenderInstance* instance) {
-		instance->SubmitModel(model);
-	}
-
-	void Renderer::SubmitLightToFrame(Light& light, RenderInstance* instance) {
-		instance->SubmitLight(light);
-	}
-
-	void Renderer::SubmitMainCamera(Camera* cam, RenderInstance* instance) {
-		instance->SetCamera(cam);
-	}
-
-
-	RenderInstance* Renderer::CreateRenderInstance() {
-		RenderInstance* instance =  new RenderInstance(RenderDevice, swapChain, renderPass);
-		RenderInstances.push_back(instance);
-		return instance;
-	}
-
-	RenderInstance* Renderer::CreateRenderInstance(RenderTexture* texture) {
-		RenderInstance* instance = new RenderInstance(RenderDevice, swapChain, renderPass, texture);
-		RenderInstances.push_back(instance);
-		return instance;
-	}
-
-	void Renderer::DestroyAllRenderInstances() {
-		// Reset the vectors for Models and lights
-		for (RenderInstance* instance : RenderInstances) {
-			delete instance;
-		}
-	}
-
-
-
 	// Creates a material given a material create struct, Material memory is handled by renderer
 	Material* Renderer::CreateMaterial(MaterialInfo info) {
 		Material* material = new Material(RenderDevice, &commandPool, info.vertexSource, info.FragmentSource, info.textures, info.isLit);
 
-		for (RenderInstance* instance : RenderInstances) {
-			instance->CreateMaterial(material, commandPool);
-		}
+		materials.push_back(material);
 
 		return material;
 	}
+
+	void Renderer::BuildRenderGraphs() {
+		for (RenderGraph* graph : RenderGraphs) {
+			graph->Generate(*RenderDevice, materials);
+		}
+	}
+
+
+	void Renderer::SubmitModel(Model* model, RenderGraph* graph) {
+		renderDataPerGraph[graph].models.push_back(model);
+	}
+
+	void Renderer::SubmitLight(Light* light, RenderGraph* graph) {
+		renderDataPerGraph[graph].lights.push_back(*light);
+	}
+
+
+	RenderGraph* Renderer::CreateRenderGraph(std::string name) {
+		RenderGraph* graph = new RenderGraph(name, commandPool, *RenderDevice);
+		RenderGraphs.push_back(graph);
+		return graph;
+	}
+
+	void Renderer::ClearRenderData() {
+		for (RenderGraph* graph : RenderGraphs) {
+			RenderData& data = renderDataPerGraph[graph];
+			data.models.clear();
+			data.lights.clear();
+		}
+	}
+
+
 
 
 	RenderTexture* Renderer::CreateRenderTexture(int width, int height) {
@@ -310,21 +295,18 @@ namespace Simple3D {
 		return texture;
 	}
 
-
 	void Renderer::WindoResize() {
 		RecreateSwapChain();
 
-		//for (auto texture : RenderTextures) {
-		//	texture->resize(swapChain->GetSwapChainExtent().width, swapChain->GetSwapChainExtent().height);
-		//}
+		for (RenderGraph* graph : RenderGraphs) {
+			graph->RegenerateFramebuffers(*RenderDevice);
+		}
+
 	}
 
 	TextureBinding Renderer::CreateTexture(std::string filepath) {
 		return CreateTextureBinding(filepath, RenderDevice, &commandPool);
 	}
-
-	
-
 
 	//////////////////////////////////////////
 	//				VULKAN SHITE			//
@@ -343,7 +325,6 @@ namespace Simple3D {
 		}
 	}
 
-
 	static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
 		VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
 		VkDebugUtilsMessageTypeFlagsEXT messageType,
@@ -354,7 +335,6 @@ namespace Simple3D {
 
 		return VK_FALSE;
 	}
-
 
 	// Destructor
 	Renderer::~Renderer() {
@@ -388,8 +368,6 @@ namespace Simple3D {
 		for (auto framebuffer : swapChainFramebuffers) {
 			vkDestroyFramebuffer(RenderDevice->getLogicalDevice(), framebuffer, nullptr);
 		}
-
-		delete depthBuffer;
 
 		// Cleanup render pass
 		vkDestroyRenderPass(RenderDevice->getLogicalDevice(), renderPass, nullptr);
@@ -485,7 +463,6 @@ namespace Simple3D {
 		return true;
 	}
 
-
 	std::vector<const char*> Renderer::getRequiredExtensions() {
 
 		std::vector<const char*> extensions(WindowExtensions, WindowExtensions + WindowExtensionCount);
@@ -498,8 +475,6 @@ namespace Simple3D {
 
 		return extensions;
 	}
-
-
 
 	void Renderer::setupDebugMessenger() {
 		if (!enableValidationLayers) return;
@@ -523,8 +498,9 @@ namespace Simple3D {
 		}
 	}
 
+
 	void Renderer::CreateRenderPass() {
-		// Main render pass attachments
+		// --- Color attachment (no depth) ---
 		VkAttachmentDescription colorAttachment{};
 		colorAttachment.format = swapChain->GetSwapChainImageFormat();
 		colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
@@ -535,46 +511,30 @@ namespace Simple3D {
 		colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 		colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
-		VkAttachmentDescription depthAttachment{};
-		depthAttachment.format = findDepthFormat(RenderDevice);
-		depthAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
-		depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-		depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-		depthAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-		depthAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-		depthAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-		depthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-
-		// Attachment references
+		// --- Attachment reference ---
 		VkAttachmentReference colorAttachmentRef{};
 		colorAttachmentRef.attachment = 0;
 		colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
-		VkAttachmentReference depthAttachmentRef{};
-		depthAttachmentRef.attachment = 1;
-		depthAttachmentRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-
-		// Subpass description
+		// --- Subpass ---
 		VkSubpassDescription subpass{};
 		subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
 		subpass.colorAttachmentCount = 1;
 		subpass.pColorAttachments = &colorAttachmentRef;
-		subpass.pDepthStencilAttachment = &depthAttachmentRef;
+		subpass.pDepthStencilAttachment = nullptr; // no depth
 
-		// Subpass dependencies
+		// --- Subpass dependency ---
 		VkSubpassDependency dependency{};
 		dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
 		dependency.dstSubpass = 0;
-		dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT |
-			VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+		dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 		dependency.srcAccessMask = 0;
-		dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT |
-			VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
-		dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
-			VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+		dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+		dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 
-		// Main render pass
-		std::array<VkAttachmentDescription, 2> attachments = { colorAttachment, depthAttachment };
+		// --- Main ImGui render pass ---
+		std::array<VkAttachmentDescription, 1> attachments = { colorAttachment };
+
 		VkRenderPassCreateInfo renderPassInfo{};
 		renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
 		renderPassInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
@@ -585,26 +545,22 @@ namespace Simple3D {
 		renderPassInfo.pDependencies = &dependency;
 
 		if (vkCreateRenderPass(RenderDevice->getLogicalDevice(), &renderPassInfo, nullptr, &renderPass) != VK_SUCCESS) {
-			throw std::runtime_error("failed to create render pass!");
+			throw std::runtime_error("failed to create ImGui render pass!");
 		}
 
-		// Clear render pass
+		// --- Clear (load) version of ImGui render pass ---
 		VkAttachmentDescription colorAttachmentClear = colorAttachment;
 		colorAttachmentClear.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
-		colorAttachmentClear.initialLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		colorAttachmentClear.initialLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 		colorAttachmentClear.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
-		VkAttachmentDescription depthAttachmentClear = depthAttachment;
-		depthAttachmentClear.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
-		depthAttachmentClear.initialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-		depthAttachmentClear.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+		attachments = { colorAttachmentClear };
 
-		attachments = { colorAttachmentClear, depthAttachmentClear };
 		VkRenderPassCreateInfo renderPassInfoClear = renderPassInfo;
 		renderPassInfoClear.pAttachments = attachments.data();
 
 		if (vkCreateRenderPass(RenderDevice->getLogicalDevice(), &renderPassInfoClear, nullptr, &ClearRenderPass) != VK_SUCCESS) {
-			throw std::runtime_error("failed to create clear render pass!");
+			throw std::runtime_error("failed to create ImGui clear render pass!");
 		}
 	}
 
@@ -612,9 +568,8 @@ namespace Simple3D {
 		swapChainFramebuffers.resize(swapChain->getImageViews().size());
 
 		for (size_t i = 0; i < swapChain->getImageViews().size(); i++) {
-			std::array<VkImageView, 2> attachments = {
+			std::array<VkImageView, 1> attachments = {
 				swapChain->getImageViews()[i],
-				depthBuffer->depthImageView
 			};
 
 			VkFramebufferCreateInfo framebufferInfo{};
@@ -632,8 +587,6 @@ namespace Simple3D {
 		}
 	}
 
-
-
 	void Renderer::createCommandPool() {
 		QueueFamilyIndices queueFamilyIndices = RenderDevice->findQueueFamilies();
 
@@ -647,7 +600,6 @@ namespace Simple3D {
 			throw std::runtime_error("failed to create command pool!");
 		}
 	}
-
 
 	void Renderer::createCommandBuffer() {
 		commandBuffers.resize(MAX_FRAMES_IN_FLIGHT);
@@ -698,13 +650,9 @@ namespace Simple3D {
 		cleanupSwapChain();
 		swapChain->recreate(width, height);
 
-		delete depthBuffer;
-		depthBuffer = new DepthBuffer(RenderDevice, swapChain->GetSwapChainExtent(), &commandPool);
-
 
 		createFramebuffers();
 	}
-
 
 	void Renderer::cleanupSwapChain() {
 		for (size_t i = 0; i < swapChainFramebuffers.size(); i++) {

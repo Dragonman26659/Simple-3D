@@ -23,7 +23,8 @@ namespace Simple3D {
 		Raytrace,
 		Enviroment,
 		UI,
-		PostProsess
+		PostProsess,
+		None
 	};
 
 
@@ -31,6 +32,8 @@ namespace Simple3D {
 	struct RenderTarget {
 		SwapChain* swapchain = nullptr;
 		RenderTexture* texture = nullptr;
+
+		DepthBuffer* depthTexture = nullptr;
 
 		bool IsSwapchain() const { return swapchain != nullptr; }
 		bool IsTexture()   const { return texture != nullptr; }
@@ -43,6 +46,82 @@ namespace Simple3D {
 			if (texture) return texture->GetImage();
 			if (swapchain) return swapchain->getImages()[currentFrame];
 			return VK_NULL_HANDLE;
+		}
+
+
+		VkFormat GetFormat() const {
+			if (texture) return texture->getFormat();
+			if (swapchain) return swapchain->GetSwapChainImageFormat();
+			return VK_FORMAT_UNDEFINED;
+		}
+
+		VkExtent2D GetExtent() const {
+			if (texture) return texture->getExtent();
+			if (swapchain) return swapchain->GetSwapChainExtent();
+			return { 0, 0 };
+		}
+
+		bool HasDepth() const {
+			return depthTexture != nullptr;
+		}
+
+		VkFormat GetDepthFormat() const {
+			if (depthTexture) return depthTexture->depthFormat;
+			return VK_FORMAT_UNDEFINED;
+		}
+
+		VkImageView GetColorImageView(uint32_t currentFrame = 0) const {
+			if (texture) return texture->GetImageView();
+			if (swapchain) return swapchain->getImageViews()[currentFrame];
+			return VK_NULL_HANDLE;
+		}
+
+		VkImageView GetDepthImageView() const {
+			return depthTexture ? depthTexture->depthImageView : VK_NULL_HANDLE;
+		}
+
+		bool IsOffscreen() const {
+			return texture != nullptr && swapchain == nullptr;
+		}
+
+
+		VkAttachmentDescription GetColorAttachmentDescription(
+			VkImageLayout finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			VkAttachmentLoadOp loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+			VkAttachmentStoreOp storeOp = VK_ATTACHMENT_STORE_OP_STORE) const
+		{
+			VkAttachmentDescription colorAttachment{};
+			colorAttachment.format = GetFormat();
+			colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+			colorAttachment.loadOp = loadOp;
+			colorAttachment.storeOp = storeOp;
+			colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+			colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+			colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+			colorAttachment.finalLayout = finalLayout;
+			return colorAttachment;
+		}
+
+		VkAttachmentDescription GetDepthAttachmentDescription() const {
+			VkAttachmentDescription depthAttachment{};
+			if (!HasDepth()) return depthAttachment;
+
+			depthAttachment.format = GetDepthFormat();
+			depthAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+			depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+			depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+			depthAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+			depthAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+			depthAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+			depthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+			return depthAttachment;
+		}
+
+		std::vector<VkImageView> GetAttachmentViews(uint32_t currentFrame = 0) const {
+			std::vector<VkImageView> views;
+			views.push_back(GetColorImageView(currentFrame));
+			if (HasDepth()) views.push_back(GetDepthImageView());
+			return views;
 		}
 	};
 
@@ -57,7 +136,13 @@ namespace Simple3D {
 		VkFramebuffer framebuffer = VK_NULL_HANDLE;
 		std::vector<VkFramebuffer> framebuffers;
 
-		VkRenderPass renderPass = VK_NULL_HANDLE;
+
+		VkFramebuffer GetFrameBuffer(uint32_t imageIndex) {
+			if (target.swapchain) {
+				return framebuffers[imageIndex];
+			}
+			return framebuffer;
+		}
 	};
 
 
@@ -72,7 +157,7 @@ namespace Simple3D {
 
 	class RenderPass {
 	public:
-		PassType type;
+		PassType type = None;
 		std::string name;
 		RenderInfo renderInfo;
 
@@ -80,8 +165,15 @@ namespace Simple3D {
 		std::vector<std::string> inputResources;
 		std::vector<std::string> outputResources;
 
-		virtual void Execute(VkCommandBuffer cmd, RenderData data, uint32_t currentFrame) = 0;
+
+		void GenerateRenderPass();
+		void CreatePipelines(std::vector<Material*> materials);
+		virtual void Execute(VkCommandBuffer cmd, const RenderData& data, uint32_t currentFrame) = 0;
 
 		virtual ~RenderPass() = default;
+
+		VkRenderPass renderPass = VK_NULL_HANDLE;
+		Device* device;
+		VkCommandPool* commandPool;
 	};
 }

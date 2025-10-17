@@ -9,14 +9,20 @@
 #include "Internal/SwapChain.h"
 #include "Internal/Pipeline.h"
 #include "Internal/DepthBuffer.h"
-#include "Internal/RenderInstance.h"
 #include "Internal/RenderTexture.h"
+#include "Internal/RenderGraph.h"
 
 
 // Components
 #include "Component/Renderable/Model.h"
 #include "Component/Tools/Camera.h"
 #include "Component/Tools/Lights.h"
+
+// RenderPasses
+#include "Internal/RenderPasses/GeometryPass.h"
+
+
+
 
 
 namespace Simple3D {
@@ -67,9 +73,6 @@ namespace Simple3D {
 
 			// Create Command Buffers
 			createCommandPool();
-
-			// Create depth buffer
-			depthBuffer = new DepthBuffer(RenderDevice, swapChain->GetSwapChainExtent(), &commandPool);
 
 			// Create frame buffers
 			createFramebuffers();
@@ -177,18 +180,23 @@ namespace Simple3D {
 		void RecreateSwapChain();
 
 		Material* CreateMaterial(MaterialInfo info);
+
+
+		void SubmitModel(Model* model, RenderGraph* graph);
+		void SubmitLight(Light* light, RenderGraph* graph);
+		void ClearRenderData();
+
+
+		RenderGraph* CreateRenderGraph(std::string name);
+		void BuildRenderGraphs();
+
 		TextureBinding CreateTexture(std::string filepath);
 
-
-		void SumbitModelToFrame(Model* model, RenderInstance* instance);
-		void SubmitMainCamera(Camera* cam, RenderInstance* instance);
-		void SubmitLightToFrame(Light& light, RenderInstance* instance);
-
-		RenderInstance* CreateRenderInstance();
-		RenderInstance* CreateRenderInstance(RenderTexture* texture);
+		// Dosent expose vulkan directly but alows for renderTargets to be made
+		SwapChain* GetSwapChain() { return swapChain; }
 
 		RenderTexture* CreateRenderTexture(int width, int height);
-		void DestroyAllRenderInstances();
+
 
 
 #ifdef USEIMGUI
@@ -357,9 +365,6 @@ namespace Simple3D {
 		std::vector<VkSemaphore> renderFinishedSemaphores;
 		std::vector<VkFence> inFlightFences;
 
-
-		// Parts that are not large enough for there own class but probably should be
-
 		// Render pass
 		VkRenderPass renderPass;
 		VkRenderPass ClearRenderPass;
@@ -372,8 +377,11 @@ namespace Simple3D {
 		SwapChain* swapChain;
 
 
-		// DepthBuffer
-		DepthBuffer* depthBuffer;
+		// Data for each frame
+		std::unordered_map<RenderGraph*, RenderData> renderDataPerGraph;
+
+
+
 
 		// Information gathered from windows
 		const char** WindowExtensions;
@@ -383,10 +391,9 @@ namespace Simple3D {
 		uint32_t currentFrame = 0;
 
 		// Models and lights
-		std::vector<RenderInstance*> RenderInstances;
+		std::vector<RenderGraph*> RenderGraphs;
 		std::vector<RenderTexture*> RenderTextures;
-
-
+		std::vector<Material*> materials;
 
 #ifdef USEIMGUI
 		// DescriptorPool for Imgui
@@ -396,16 +403,12 @@ namespace Simple3D {
 		// Create instance
 		void CreateInstance(std::string EngineName, std::string ApplicationName);
 
-
 		// Create command pool and command buffer
 		void createCommandPool();
 		void createCommandBuffer();
 
-
-
 		// Command buffer recording -- In header due to references to preprossessor
 		void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex);
-
 
 		// Sync objects
 		void createSyncObjects();
@@ -418,16 +421,12 @@ namespace Simple3D {
 		std::vector<const char*> getRequiredExtensions();
 		bool checkValidationLayerSupport();
 
-
 		// Parts that are not large enough for there own class but probably should be
 		void CreateRenderPass();
 		void createFramebuffers();
 
 		// Clean up all objects related to swapchain
 		void cleanupSwapChain();
-
-
-
 
 		int lastWidth = 0;
 		int lastHeight = 0;

@@ -14,6 +14,8 @@ namespace Simple3D {
 
 
 		VkImageView depthImageView;
+		VkFormat depthFormat;
+		VkExtent2D extent;
 	private:
 		VkImage depthImage;
 		VkDeviceMemory depthImageMemory;
