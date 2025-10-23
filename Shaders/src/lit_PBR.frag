@@ -37,10 +37,22 @@ layout(location = 0) out vec4 outColor;
 
 
 // Texture samplers sorted alphabetically by texture name
-layout(binding = 1) uniform sampler2D textureSamplers[];
-layout(std430, binding = 2) buffer LightBuffer {
+layout(std430, binding = 1) buffer LightBuffer {
     Light lights[];
-};
+} lightBuffer;
+
+
+// Match exactly the texture names in your C++ material binding
+layout(binding = 2) uniform sampler2D AO;
+layout(binding = 3) uniform sampler2D Albedo;
+layout(binding = 4) uniform sampler2D Emissive;
+layout(binding = 5) uniform sampler2D Metalic;
+layout(binding = 6) uniform sampler2D Normal;
+layout(binding = 7) uniform sampler2D Roughness;
+
+
+
+
 
 // -------------------- Helpers (GGX / Fresnel / Geometry) --------------------
 
@@ -108,11 +120,11 @@ float attenuate(float distance, float intensity)
 vec3 EvaluateLightContribution(Light light)
 {
     // Data for color (Add emmisive later)
-    float AO            =    texture(textureSamplers[0], UV).r;
-    vec3 Albedo         =    texture(textureSamplers[1], UV).rgb;
-    float Metallic      =    texture(textureSamplers[3], UV).r;
-    vec3 NormalMap      =    texture(textureSamplers[4], UV).rgb;
-    float Roughness     =    texture(textureSamplers[5], UV).r;
+    float AO            =    texture(AO, UV).r;
+    vec3 Albedo         =    texture(Albedo, UV).rgb;
+    float Metallic      =    texture(Metalic, UV).r;
+    vec3 NormalMap      =    texture(Normal, UV).rgb;
+    float Roughness     =    texture(Roughness, UV).r;
 
     Albedo = Albedo * fragColor;
 
@@ -182,12 +194,12 @@ vec3 EvaluateLightContribution(Light light)
 
 void main()
 {
-    vec3 Emissive       =    texture(textureSamplers[2], UV).rgb;
+    vec3 Emissive       =    texture(Emissive, UV).rgb;
 
     vec3 totalColor = vec3(0.0);
     for (int i = 0; i < MAX_LIGHTS; ++i) {
-        if (lights[i].type != 0)
-            totalColor += EvaluateLightContribution(lights[i]);
+        if (lightBuffer.lights[i].type != 0)
+            totalColor += EvaluateLightContribution(lightBuffer.lights[i]);
     }
 
     vec3 color = totalColor + Emissive;

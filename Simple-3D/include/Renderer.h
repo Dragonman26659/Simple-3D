@@ -180,6 +180,7 @@ namespace Simple3D {
 		void RecreateSwapChain();
 
 		Material* CreateMaterial(MaterialInfo info);
+		ShaderSet* CreateShaderSet(std::string name);
 
 
 		void SubmitModel(Model* model, RenderGraph* graph);
@@ -196,7 +197,7 @@ namespace Simple3D {
 		SwapChain* GetSwapChain() { return swapChain; }
 
 		RenderTexture* CreateRenderTexture(int width, int height);
-
+		DepthBuffer* CreateDepth(RenderTarget target);
 
 
 #ifdef USEIMGUI
@@ -393,7 +394,7 @@ namespace Simple3D {
 		// Models and lights
 		std::vector<RenderGraph*> RenderGraphs;
 		std::vector<RenderTexture*> RenderTextures;
-		std::vector<Material*> materials;
+		std::vector<ShaderSet*> shaders;
 
 #ifdef USEIMGUI
 		// DescriptorPool for Imgui

@@ -10,7 +10,7 @@ layout(binding = 0) uniform UniformBufferObject {
     mat4 model;
     mat4 view;
     mat4 proj;
-    vec3 cameraPos;
+    vec4 cameraPos;
 } ubo;
 
 layout(location = 0) out vec3 fragColor;      // Declare output color
@@ -28,6 +28,6 @@ void main() {
     fragTexCoord = inTexCoord;
     normalOut = normal;
     tangent = inTangent;
-    cameraPos = ubo.cameraPos;
+    cameraPos = vec3(ubo.cameraPos);
     fragPos = vec3(ubo.model * vec4(inPosition, 1.0f));
 }

@@ -5,19 +5,30 @@
 namespace Simple3D {
 
 
-    void NameTextureBinding(Device* r_device, const TextureBinding& binding, const std::string& textureName) {
-        auto device = r_device->getLogicalDevice();
+    inline void NameTextureBinding(Device* r_device, const TextureBinding& binding, const std::string& textureName)
+    {
+        if (!r_device) return;
+        VkDevice device = r_device->getLogicalDevice();
+        if (!device) return;
 
-        NameVulkanObject(device, (uint64_t)binding.view, VK_OBJECT_TYPE_IMAGE_VIEW, textureName + " View");
-        NameVulkanObject(device, (uint64_t)binding.sampler, VK_OBJECT_TYPE_SAMPLER, textureName + " Sampler");
-        NameVulkanObject(device, (uint64_t)binding.textureImage, VK_OBJECT_TYPE_IMAGE, textureName + " Image");
-        NameVulkanObject(device, (uint64_t)binding.textureImageMemory, VK_OBJECT_TYPE_DEVICE_MEMORY, textureName + " Memory");
-        NameVulkanObject(device, (uint64_t)binding.descriptorSet, VK_OBJECT_TYPE_DESCRIPTOR_SET, textureName + " DescriptorSet");
+        SetObjectName(device, reinterpret_cast<uint64_t>(binding.view),
+            VK_OBJECT_TYPE_IMAGE_VIEW, textureName + " View");
+
+        SetObjectName(device, reinterpret_cast<uint64_t>(binding.sampler),
+            VK_OBJECT_TYPE_SAMPLER, textureName + " Sampler");
+
+        SetObjectName(device, reinterpret_cast<uint64_t>(binding.textureImage),
+            VK_OBJECT_TYPE_IMAGE, textureName + " Image");
+
+        SetObjectName(device, reinterpret_cast<uint64_t>(binding.textureImageMemory),
+            VK_OBJECT_TYPE_DEVICE_MEMORY, textureName + " Memory");
+
+        SetObjectName(device, reinterpret_cast<uint64_t>(binding.descriptorSet),
+            VK_OBJECT_TYPE_DESCRIPTOR_SET, textureName + " DescriptorSet");
     }
 
-    Material::Material(Device* device, VkCommandPool* commandPool, std::string vertex, std::string Fragment, std::unordered_map<std::string, std::string> texture_files, bool isLit)
-        : r_device(device), r_commandPool(commandPool)
-        , vertexSource(vertex), FragmentSource(Fragment), isLit(isLit)
+    Material::Material(Device* device, VkCommandPool* commandPool, std::unordered_map<std::string, std::string> texture_files, ShaderSet* shaders)
+        : r_device(device), r_commandPool(commandPool), shaders(shaders)
     {
         // Create a TextureBinding for each texture name
         for (const auto& name : texture_files) {

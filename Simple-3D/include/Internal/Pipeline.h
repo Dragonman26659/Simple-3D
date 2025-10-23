@@ -1,94 +1,75 @@
 #pragma once
 #include "SimpleCore.h"
-
+#include "Internal/Material/ShaderSet.h"
+#include "RenderTarget.h"
 #include "Device.h"
 #include "Tools.h"
 
-#include "Component/Tools/Material.h"
-#include "Component/Tools/Lights.h"
-
 namespace Simple3D {
 
-	// Configures ALL pipelines together
-	struct PipelineConfig {
 
-	};
+    struct BindingInfo {
+        std::string name;
+        uint32_t binding = 0;
+        uint32_t set = 0;
+        VkDescriptorType type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        uint32_t count = 1;
+        VkShaderStageFlags stageFlags = 0;
 
+        // Per-frame buffers (only used for UBO/SSBO types)
+        std::vector<VkBuffer> buffers;                      // size == MAX_FRAMES_IN_FLIGHT
+        std::vector<VkDeviceMemory> bufferMemories;         // size == MAX_FRAMES_IN_FLIGHT
+        std::vector<void*> mappedData;                      
+        size_t dataSize = 0;
 
-	class Pipeline {
-	public:
-		Pipeline(Device& s_Device, VkRenderPass renderPass, Material* materialBinding);
-		~Pipeline();
+        // For images
+        VkImageView imageView = VK_NULL_HANDLE;
+        VkSampler sampler = VK_NULL_HANDLE;
+    };
 
+    class Pipeline {
+    public:
+        Pipeline(Device& device, ShaderSet& shaderSet, VkRenderPass renderPass, RenderTarget& target);
+        ~Pipeline();
 
-		VkPipeline			GetPipeline();
-		VkPipelineLayout	GetLayout();
-		void				updateUniformBuffer(uint32_t currentImage, uint32_t objectIndex, glm::mat4 PerspectiveMatrix, glm::mat4 ViewMatrix, glm::mat4 transform, glm::vec3 CameraPos);
-		void				updateLights(uint32_t currentImage, const std::vector<Light>& lights);
+        VkPipeline GetPipeline() const { return pipeline; };
+        VkPipelineLayout GetLayout() const { return layout; };
 
+        // Bind arbitrary data (UBO, texture, storage buffer) by descriptor name
+        void BindData(const std::string& name, const void* data, size_t size, uint32_t arrayIndex = 0);
+        void BindData(const std::string& name, const VkDescriptorImageInfo& imgInfo, uint32_t arrayIndex = 0);
 
-		// ONly to be used when using Imgui
-		void				setRenderPass(VkRenderPass newRenderPass);
+        // Update GPU buffers, call vkUpdateDescriptorSets internally
+        void UpdateDescriptors(uint32_t frameIndex);
 
+        // Returns all descriptor sets for a given frame index
+        inline const std::vector<VkDescriptorSet>& GetDescriptorSets(uint32_t frameIndex) const {
+            return descriptorSets[frameIndex];
+        }
 
-		// Make discriptor sets public cuz fuck getters
-		std::vector<VkDescriptorSet> descriptorSets;
+        // For convenience if you only need the first set (like old code)
+        inline VkDescriptorSet GetFirstDescriptorSet(uint32_t frameIndex) const {
+            return descriptorSets[frameIndex].empty() ? VK_NULL_HANDLE : descriptorSets[frameIndex][0];
+        }
 
-	private:
-		Device& s_Device;
-		Material* material;
+    private:
+        ShaderSet* shaderSet;
+        Device* device;
+        RenderTarget& target;
 
-		static std::vector<char> readFile(const std::string& filename);
+        VkPipeline pipeline = VK_NULL_HANDLE;
+        VkPipelineLayout layout = VK_NULL_HANDLE;
 
-		// Render Pass Reference
-		VkRenderPass& renderPass;
+        std::vector<VkDescriptorSetLayout> setLayouts;
+        std::vector<std::vector<VkDescriptorSet>> descriptorSets;
 
-		// Pipeline itself
-		VkPipelineLayout pipelineLayout;
-		VkPipeline graphicsPipeline; 
-
-		// Discriptor set
-		VkDescriptorSetLayout descriptorSetLayout;
-		VkDescriptorPool descriptorPool;
-
-		// Uniform Buffers
-		std::vector<VkBuffer> uniformBuffers;
-		std::vector<VkDeviceMemory> uniformBuffersMemory;
-		std::vector<void*> uniformBuffersMapped;
-
-		// dynamic UBO stuff
-		size_t dynamicAlignment = 0;
-		VkDeviceSize dynamicBufferSize = 0;
-		uint32_t maxObjects = 1024; // tweak to expected max objects per material
-		std::vector<VkBuffer> dynamicUniformBuffers;             // per-frame big buffer
-		std::vector<VkDeviceMemory> dynamicUniformBuffersMemory;
-		std::vector<void*> dynamicUniformBuffersMapped;
-
-
-		// Lights
-		std::vector<VkBuffer> lightBuffers;
-		std::vector<VkDeviceMemory> lightBuffersMemory;
-		std::vector<void*> lightBuffersMapped;
-		std::vector<VkDeviceSize> lightBuffersSize;
+        std::unordered_map<std::string, BindingInfo> bindings;
+        VkDescriptorPool descriptorPool = VK_NULL_HANDLE;
 
 
-		std::vector<char> vertShaderCode;
-		std::vector<char> fragShaderCode;
-
-
-
-		void			CreatePipeline();
-		VkShaderModule	createShaderModule(const std::vector<char>& code);
-
-
-
-		// Uniform Buffers & samplers
-		void			createUniformBuffers();
-		void			createLightBuffers();
-
-
-		void			createDescriptorSetLayout();
-		void			createDescriptorPool();
-		void			createDescriptorSets();
-	};
+        void CreatePipeline(VkRenderPass renderPass);
+        void CreateDescriptorSets();
+        void CreateDescriptorPool();
+        void PopulateBindingsFromShaderSet();
+    };
 }

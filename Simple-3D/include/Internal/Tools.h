@@ -54,20 +54,21 @@ namespace Simple3D {
 		return (original + alignment - 1) & ~(alignment - 1);
 	}
 
-	inline void SetVulkanObjectName(VkDevice device, uint64_t objectHandle, VkObjectType objectType, const char* name) {
-		auto func = (PFN_vkSetDebugUtilsObjectNameEXT)vkGetDeviceProcAddr(device, "vkSetDebugUtilsObjectNameEXT");
-		if (func) {
-			VkDebugUtilsObjectNameInfoEXT nameInfo{};
-			nameInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT;
-			nameInfo.objectType = objectType;
-			nameInfo.objectHandle = objectHandle;
-			nameInfo.pObjectName = name;
-			func(device, &nameInfo);
-		}
+	// Give any Vulkan object a debug name for RenderDoc / Nsight / validation layers
+	inline void SetObjectName(VkDevice device, uint64_t objectHandle, VkObjectType objectType, const std::string& name)
+	{
+		if (name.empty()) return; // skip unnamed
+		if (!device) return;
 
-	}
-	template<typename T>
-	inline void NameVulkanObject(VkDevice device, T object, VkObjectType type, const std::string& name) {
-		SetVulkanObjectName(device, (uint64_t)object, type, name.c_str());
+		VkDebugUtilsObjectNameInfoEXT nameInfo{};
+		nameInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT;
+		nameInfo.objectType = objectType;
+		nameInfo.objectHandle = objectHandle;
+		nameInfo.pObjectName = name.c_str();
+
+		// Look up the function pointer (it’s an extension function)
+		auto func = (PFN_vkSetDebugUtilsObjectNameEXT)vkGetDeviceProcAddr(device, "vkSetDebugUtilsObjectNameEXT");
+		if (func)
+			func(device, &nameInfo);
 	}
 }

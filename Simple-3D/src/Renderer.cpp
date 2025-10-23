@@ -249,16 +249,27 @@ namespace Simple3D {
 
 	// Creates a material given a material create struct, Material memory is handled by renderer
 	Material* Renderer::CreateMaterial(MaterialInfo info) {
-		Material* material = new Material(RenderDevice, &commandPool, info.vertexSource, info.FragmentSource, info.textures, info.isLit);
-
-		materials.push_back(material);
-
+		Material* material = new Material(RenderDevice, &commandPool,info.textures, info.shaders);
+		material->updateSortedTextureNames();
 		return material;
 	}
 
+
+	ShaderSet* Renderer::CreateShaderSet(std::string name) {
+		ShaderSet* set = new ShaderSet(RenderDevice->getLogicalDevice(), name);
+		shaders.push_back(set);
+		return set;
+	}
+
 	void Renderer::BuildRenderGraphs() {
+		// Make sure all shaders have been reflected
+		for (ShaderSet* set : shaders) {
+			set->Reflect();
+		}
+
+		// Build rendergraphs
 		for (RenderGraph* graph : RenderGraphs) {
-			graph->Generate(*RenderDevice, materials);
+			graph->Generate(*RenderDevice, shaders);
 		}
 	}
 
@@ -306,6 +317,10 @@ namespace Simple3D {
 
 	TextureBinding Renderer::CreateTexture(std::string filepath) {
 		return CreateTextureBinding(filepath, RenderDevice, &commandPool);
+	}
+
+	DepthBuffer* Renderer::CreateDepth(RenderTarget target) {
+		return new DepthBuffer(RenderDevice, target.GetExtent(), &commandPool);
 	}
 
 	//////////////////////////////////////////

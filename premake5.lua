@@ -28,7 +28,9 @@ project "Simple-3D"
         "%{prj.name}/**.c",
         "%{prj.name}/**.cpp",
         "%{prj.name}/**.h",
-        "%{prj.name}/**.hpp"
+        "%{prj.name}/**.hpp",
+        "vendor/Vulkan/Source/SPIRV-Reflect/**.c",
+        "vendor/Vulkan/Source/SPIRV-Reflect/**.h"
     }
 
     includedirs {
@@ -36,6 +38,7 @@ project "Simple-3D"
         "vendor/GLFW/include",
         "vendor/SDL/include",
         "vendor/Vulkan/Include",
+        "vendor/Vulkan/Source/SPIRV-Reflect",
         "vendor/glm",
         "vendor/ImGui"
     }
@@ -104,6 +107,7 @@ project "GLFW-Example"
         "Simple-3D/include",
         "vendor/GLFW/include",
         "vendor/Vulkan/Include",
+        "vendor/Vulkan/Source/SPIRV-Reflect",
         "vendor/TinyObjLoader/Include",
         "vendor/glm",
         "vendor/ImGui"
@@ -170,6 +174,7 @@ project "SDL-Example"
         "Simple-3D/include",
         "vendor/SDL/include",
         "vendor/Vulkan/Include",
+        "vendor/Vulkan/Source/SPIRV-Reflect",
         "vendor/TinyObjLoader/Include",
         "vendor/glm",
         "vendor/ImGui"

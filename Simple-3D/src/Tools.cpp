@@ -363,6 +363,4 @@ namespace Simple3D {
         return binding;
     }
 
-
-
 }

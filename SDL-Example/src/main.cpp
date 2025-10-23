@@ -348,7 +348,10 @@ int main() {
 #endif // USEIMGUI
 
 
-
+    // LOAD SHADERS
+    Simple3D::ShaderSet* shader = renderer->CreateShaderSet("PBR_Shaders");
+    shader->LoadStage("shaders/lit_PBR.spv", Simple3D::ShaderStage::Fragment);
+    shader->LoadStage("shaders/vert.spv", Simple3D::ShaderStage::Vertex);
 
 
     // Light setup
@@ -380,15 +383,13 @@ int main() {
 
     // Set up model material
     Simple3D::MaterialInfo info;
-    info.FragmentSource = "shaders/lit_PBR.spv";
-    info.vertexSource = "shaders/vert.spv";
     info.textures["Albedo"] = ("textures/5382.jpg");
     info.textures["Normal"] = ("textures/asteroid_normal.jpg");
     info.textures["Roughness"] = ("textures/asteroid_rough.jpg");
-    info.textures["Metalic"] = ("textures/black.jpeg"); // No metalic
-    info.textures["Emissive"] = ("textures/black.jpeg"); // No emmision
-    info.textures["AO"] = ("textures/white.jpg"); // No AO
-    info.isLit = true;
+    info.textures["Metalic"] = ("textures/black.jpeg");
+    info.textures["Emissive"] = ("textures/black.jpeg");
+    info.textures["AO"] = ("textures/white.jpg");
+    info.shaders = shader;
 
 
     // Bind material to model and set its postion
@@ -408,9 +409,11 @@ int main() {
     Simple3D::RenderGraph* mainGraph = renderer->CreateRenderGraph("Main");
     Simple3D::RenderTarget mainTarget = Simple3D::RenderTarget();
     mainTarget.swapchain = renderer->GetSwapChain();
+    mainTarget.depthTexture = renderer->CreateDepth(mainTarget);
+    
     mainGraph->AddResource("Swapchain", &mainTarget, true);
 
-    Simple3D::RenderPass* GeometryPass = new Simple3D::GeometryPass(mainCam);
+    Simple3D::RenderPass* GeometryPass = new Simple3D::ForwardPass(mainCam);
     GeometryPass->outputResources.push_back("Swapchain");
     mainGraph->AddPass(GeometryPass);
 
@@ -421,10 +424,11 @@ int main() {
     Simple3D::RenderGraph* imguiGraph = renderer->CreateRenderGraph("Main");
     Simple3D::RenderTarget imguiTarget = Simple3D::RenderTarget();
     imguiTarget.texture = ImguiTexture;
+    imguiTarget.depthTexture = renderer->CreateDepth(imguiTarget);
 
     imguiGraph->AddResource("ImguiTexture", &imguiTarget);
 
-    Simple3D::RenderPass* ImguiGPass = new Simple3D::GeometryPass(mainCam);
+    Simple3D::RenderPass* ImguiGPass = new Simple3D::ForwardPass(mainCam);
     ImguiGPass->outputResources.push_back("ImguiTexture");
     imguiGraph->AddPass(ImguiGPass);
 
@@ -521,14 +525,6 @@ int main() {
             ImGui::Begin("Material Textures");
 
             if (material) {
-                ImGui::Text("Vertex Shader: %s", material->vertexSource.c_str());
-                ImGui::Text("Fragment Shader: %s", material->FragmentSource.c_str());
-                ImGui::Separator();
-
-                // Show whether it's lit
-                ImGui::Text("Lighting Enabled: %s", material->isLit ? "Yes" : "No");
-                ImGui::Separator();
-
                 // Iterate all textures in the material
                 for (const auto& texPair : material->textures) {
                     const std::string& texName = texPair.first;

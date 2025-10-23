@@ -25,7 +25,7 @@ namespace Simple3D {
     
 
     // --- Generate: create renderpasses and then compile+build ---
-    void RenderGraph::Generate(Device& device, std::vector<Material*> materials)
+    void RenderGraph::Generate(Device& device, std::vector<ShaderSet*> shaders)
     {
 
         // Compile the graph into execution order
@@ -33,7 +33,7 @@ namespace Simple3D {
 
 
         // Build (create framebuffers, allocate depth textures, etc.)
-        Build(device, materials);
+        Build(device, shaders);
     }
 
 
@@ -82,29 +82,23 @@ namespace Simple3D {
             }
         }
     }
-
     std::vector<VkFramebuffer> RenderGraph::CreateFramebufferForTarget(
         Device& device,
         RenderTarget& target,
         VkRenderPass renderPass)
     {
         std::vector<VkFramebuffer> framebuffers;
-        std::vector<VkImageView> attachments;
         VkExtent2D extent{};
 
-
         if (target.texture) {
-            // Offscreen render target (single framebuffer)
-            attachments.clear();
-            attachments.push_back(target.texture->GetImageView());
+            // --- Offscreen render target (single framebuffer) ---
+            std::vector<VkImageView> attachments;
+            attachments.push_back(target.texture->GetImageView()); // Color
+
+            if (target.HasDepth())
+                attachments.push_back(target.depthTexture->depthImageView); // Depth
 
             extent = target.texture->getExtent();
-
-
-            // Depth Texture
-            target.depthTexture = new DepthBuffer(&device, extent, &commandPool);
-            attachments.push_back(target.depthTexture->depthImageView);
-
 
             VkFramebufferCreateInfo fbInfo{};
             fbInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
@@ -115,25 +109,33 @@ namespace Simple3D {
             fbInfo.height = extent.height;
             fbInfo.layers = 1;
 
-            VkFramebuffer framebuffer;
+            VkFramebuffer framebuffer{};
             if (vkCreateFramebuffer(device.getLogicalDevice(), &fbInfo, nullptr, &framebuffer) != VK_SUCCESS)
                 throw std::runtime_error("Failed to create framebuffer for RenderTexture target!");
 
             framebuffers.push_back(framebuffer);
         }
         else if (target.swapchain) {
+            // --- Swapchain render target (one framebuffer per swapchain image) ---
             const auto& views = target.swapchain->getImageViews();
             extent = target.swapchain->GetSwapChainExtent();
 
-            // Depth Texture
-            target.depthTexture = new DepthBuffer(&device, extent, &commandPool);
-            attachments.push_back(target.depthTexture->depthImageView);
-
-            // one framebuffer per swapchain image
             framebuffers.reserve(views.size());
-            for (const auto& view : views) {
-                attachments.clear();
-                attachments.push_back(view);
+
+            for (const auto& colorView : views) {
+                std::vector<VkImageView> attachments;
+                attachments.push_back(colorView);
+
+                if (target.HasDepth()) {
+                    // handle if resize
+                    if (target.depthTexture->extent.width != target.GetExtent().width
+                        || target.depthTexture->extent.height != target.GetExtent().height)
+                        delete target.depthTexture;
+                        target.depthTexture = new DepthBuffer(&device, target.GetExtent(), &commandPool);
+
+
+                    attachments.push_back(target.depthTexture->depthImageView);
+                }
 
                 VkFramebufferCreateInfo fbInfo{};
                 fbInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
@@ -144,7 +146,7 @@ namespace Simple3D {
                 fbInfo.height = extent.height;
                 fbInfo.layers = 1;
 
-                VkFramebuffer framebuffer;
+                VkFramebuffer framebuffer{};
                 if (vkCreateFramebuffer(device.getLogicalDevice(), &fbInfo, nullptr, &framebuffer) != VK_SUCCESS)
                     throw std::runtime_error("Failed to create framebuffer for swapchain image!");
 
@@ -159,7 +161,7 @@ namespace Simple3D {
     }
 
 
-    void RenderGraph::Build(Device& device, std::vector<Material*> materials)
+    void RenderGraph::Build(Device& device, std::vector<ShaderSet*> shaders)
     {
         for (auto& passPtr : passes)
         {
@@ -176,7 +178,7 @@ namespace Simple3D {
 
             
             pass.GenerateRenderPass();
-            pass.CreatePipelines(materials);
+            pass.CreatePipelines(shaders);
 
             if (!info.target.IsValid())
                 continue;
@@ -211,7 +213,7 @@ namespace Simple3D {
         // --- Build attachments using helper methods ---
         std::vector<VkAttachmentDescription> attachments;
         attachments.push_back(target.GetColorAttachmentDescription(
-            target.IsSwapchain() ? VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
+             target.IsSwapchain() ? VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
             : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
         ));
 
@@ -266,15 +268,23 @@ namespace Simple3D {
 
         if (vkCreateRenderPass(device->getLogicalDevice(), &renderPassInfo, nullptr, &renderPass) != VK_SUCCESS)
             throw std::runtime_error("RenderPass::GenerateRenderPass() -> Failed to create VkRenderPass!");
+
+        // --- Assign debug name for RenderDoc / Nsight ---
+        SetObjectName(
+            device->getLogicalDevice(),
+            reinterpret_cast<uint64_t>(renderPass),
+            VK_OBJECT_TYPE_RENDER_PASS,
+            name
+        );
     }
 
 
 
-    void RenderPass::CreatePipelines(std::vector<Material*> materials) {
+    void RenderPass::CreatePipelines(std::vector<ShaderSet*> shaders) {
         if (renderPass == VK_NULL_HANDLE) return;
 
-        for (Material* material : materials) {
-            renderInfo.materialPipelines[material] = new Pipeline(*device, renderPass, material);
+        for (ShaderSet* shaderset : shaders) {
+            renderInfo.Pipelines[shaderset] = new Pipeline(*device, *shaderset, renderPass, renderInfo.target);
         }
     }
 }

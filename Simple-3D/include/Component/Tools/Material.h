@@ -2,16 +2,13 @@
 #include "SimpleCore.h"
 #include "Internal/Device.h"
 #include "Internal/Tools.h"
-
+#include "Internal/Material/ShaderSet.h"
 
 namespace Simple3D {
 	// Needed when creating material by renderer
 	struct MaterialInfo {
-		// Shader info
-		std::string vertexSource;
-		std::string FragmentSource;
 
-		bool isLit;
+		ShaderSet* shaders;
 		std::unordered_map<std::string, std::string> textures;
 	};
 
@@ -23,7 +20,7 @@ namespace Simple3D {
 	*/
 	class Material {
 	public:
-		Material(Device* r_device, VkCommandPool* commandPool, std::string vertexSource, std::string FragmentSource, std::unordered_map<std::string, std::string> textures, bool isLit);
+		Material(Device* device, VkCommandPool* commandPool, std::unordered_map<std::string, std::string> textures, ShaderSet* shaders);
 		~Material();
 
 
@@ -33,18 +30,11 @@ namespace Simple3D {
 		Device* r_device = nullptr;
 		VkCommandPool* r_commandPool;
 
-
-		// Shaders
-		std::string vertexSource;
-		std::string FragmentSource;
-
-		// Do we need to light the texture
-		bool isLit;
-
+		ShaderSet* shaders;
 
 		// Textures
 		std::unordered_map<std::string, TextureBinding> textures;
-		// Sort texture names
+
 		std::vector<std::string> sortedTextureNames;
 	private:
 

@@ -32,10 +32,10 @@ namespace Simple3D {
         void Compile();
 
         std::vector<VkFramebuffer> CreateFramebufferForTarget(Device& device, RenderTarget& target, VkRenderPass renderPass);
-        void Build(Device& device, std::vector<Material*> materials);
+        void Build(Device& device, std::vector<ShaderSet*> shaders);
 
         void Execute(VkCommandBuffer cmd, RenderData data, uint32_t currentFrame);
-        void Generate(Device& device, std::vector<Material*> materials);
+        void Generate(Device& device, std::vector<ShaderSet*> shaders);
 
         void RegenerateFramebuffers(Device& device);
     
