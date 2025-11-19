@@ -12,15 +12,19 @@ layout(location = 5) in vec3 cameraPos;
 
 layout(location = 0) out vec4 outColor;
 
+// Texture samplers sorted alphabetically by texture name
+layout(std430, binding = 1) buffer LightBuffer {
+    Light lights[];
+} lightBuffer;
 
 // Texture samplers sorted alphabetically by texture name
-layout(binding = 1) uniform sampler2D textureSamplers[];
+layout(binding = 1) uniform sampler2D Albedo;
 
 
 
 void main() {
     // Sample the texture at the current coordinates
-    vec4 texColor = texture(textureSamplers[0], fragTexCoord);
+    vec4 texColor = texture(Albedo, fragTexCoord);
     vec4 finalColor = texColor.a < 0.0 ? vec4(fragColor, 1.0) : texColor;
     outColor = finalColor;
 }

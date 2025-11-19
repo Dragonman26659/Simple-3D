@@ -144,16 +144,6 @@ namespace Simple3D {
                         b->name ? b->name : "UNKNOWN_BINDING",
                         stageFlag
                         });
-
-                    printf("Reflect: stage=%s (%#x) file=%s set=%u binding=%u name=%s spv_type=%s count=%u\n",
-                        StageName(stageInfo.stage),
-                        static_cast<unsigned int>(spvReflectShaderStageToVk(stageInfo.stage)),
-                        stageInfo.path.c_str(),
-                        setIndex,
-                        bindingIndex,
-                        b->name ? b->name : "NULL",
-                        spvTypeName(b->descriptor_type),
-                        b->count);
                 }
             }
 
@@ -182,7 +172,8 @@ namespace Simple3D {
 
 
     VkPipelineLayout ShaderSet::CreatePipelineLayout() {
-        CreateDescriptorSetLayouts();
+        if (setLayouts.empty())
+            CreateDescriptorSetLayouts();
 
         VkPipelineLayoutCreateInfo info{ VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
         info.setLayoutCount = static_cast<uint32_t>(setLayouts.size());

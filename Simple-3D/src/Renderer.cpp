@@ -16,9 +16,8 @@ std::string vkResultToString(VkResult result) {
 
 namespace Simple3D {
 	// Actual render loop :0
-	void Renderer::Render() {
+	void Renderer::Render(RenderData& data) {
 		if (isMinimised()) {
-			ClearRenderData();
 			return;
 		}
 
@@ -49,7 +48,7 @@ namespace Simple3D {
 		vkResetCommandBuffer(commandBuffers[currentFrame], 0);
 
 		// Record the Command buffer
-		recordCommandBuffer(commandBuffers[currentFrame], imageIndex);
+		recordCommandBuffer(commandBuffers[currentFrame], imageIndex, data);
 
 
 		// Submit the frame to screen
@@ -100,12 +99,10 @@ namespace Simple3D {
 
 
 		currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
-
-		ClearRenderData();
 	}
 
 
-	void Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex) {
+	void Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex, RenderData& data) {
 
 		// Begin to record
 		VkCommandBufferBeginInfo beginInfo{};
@@ -141,7 +138,6 @@ namespace Simple3D {
 
 		// Render All Render to texture instances
 		for (RenderGraph* graph : RenderGraphs) {
-			RenderData& data = renderDataPerGraph[graph];
 			graph->Execute(commandBuffer, data, imageIndex);
 			haveRendered = true;
 		}
@@ -274,27 +270,10 @@ namespace Simple3D {
 	}
 
 
-	void Renderer::SubmitModel(Model* model, RenderGraph* graph) {
-		renderDataPerGraph[graph].models.push_back(model);
-	}
-
-	void Renderer::SubmitLight(Light* light, RenderGraph* graph) {
-		renderDataPerGraph[graph].lights.push_back(*light);
-	}
-
-
 	RenderGraph* Renderer::CreateRenderGraph(std::string name) {
 		RenderGraph* graph = new RenderGraph(name, commandPool, *RenderDevice);
 		RenderGraphs.push_back(graph);
 		return graph;
-	}
-
-	void Renderer::ClearRenderData() {
-		for (RenderGraph* graph : RenderGraphs) {
-			RenderData& data = renderDataPerGraph[graph];
-			data.models.clear();
-			data.lights.clear();
-		}
 	}
 
 

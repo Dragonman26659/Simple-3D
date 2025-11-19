@@ -172,7 +172,7 @@ namespace Simple3D {
 		~Renderer();
 
 
-		void Render();
+		void Render(RenderData& data);
 		void WaitToFinish();
 		void WindoResize();
 
@@ -181,11 +181,6 @@ namespace Simple3D {
 
 		Material* CreateMaterial(MaterialInfo info);
 		ShaderSet* CreateShaderSet(std::string name);
-
-
-		void SubmitModel(Model* model, RenderGraph* graph);
-		void SubmitLight(Light* light, RenderGraph* graph);
-		void ClearRenderData();
 
 
 		RenderGraph* CreateRenderGraph(std::string name);
@@ -378,10 +373,6 @@ namespace Simple3D {
 		SwapChain* swapChain;
 
 
-		// Data for each frame
-		std::unordered_map<RenderGraph*, RenderData> renderDataPerGraph;
-
-
 
 
 		// Information gathered from windows
@@ -409,7 +400,7 @@ namespace Simple3D {
 		void createCommandBuffer();
 
 		// Command buffer recording -- In header due to references to preprossessor
-		void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex);
+		void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex, RenderData& data);
 
 		// Sync objects
 		void createSyncObjects();

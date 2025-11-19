@@ -102,5 +102,19 @@ namespace Simple3D {
 			if (HasDepth()) views.push_back(GetDepthImageView());
 			return views;
 		}
+
+
+		// Redundant for now as it always returns 1 but if later we support many colorattachments per target its needed
+		uint32_t GetColorAttachmentCount() const {
+			if (texture) {
+				// If RenderTexture later supports multiple attachments (e.g. texture array or vector)
+				return 1;
+			}
+			if (swapchain) {
+				// Swapchain always has exactly one color attachment
+				return 1;
+			}
+			return 0;
+		}
 	};
 }

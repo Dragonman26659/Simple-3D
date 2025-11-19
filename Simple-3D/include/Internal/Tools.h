@@ -71,4 +71,62 @@ namespace Simple3D {
 		if (func)
 			func(device, &nameInfo);
 	}
+
+
+	// FOR CUBEMAPS (Replace old ones with this eventually)
+
+
+
+	// create image (2D or Cubemap)
+	void createImage(
+		const VkImageCreateInfo& info,
+		VkMemoryPropertyFlags properties,
+		VkImage& image,
+		VkDeviceMemory& memory,
+		Device* device
+	);
+
+	// Generic view creator (2D / 3D / Cube)
+	VkImageView createImageView(
+		VkImage image,
+		VkFormat format,
+		VkImageAspectFlags aspectFlags,
+		uint32_t mipLevels,
+		uint32_t layers,
+		VkImageViewType viewType,
+		Device* device
+	);
+
+	void transitionImageLayout(
+		VkImage image,
+		VkFormat format,
+		VkImageLayout oldLayout,
+		VkImageLayout newLayout,
+		uint32_t mipLevels,
+		uint32_t layers,
+		Device* device,
+		VkCommandPool* CommandPool
+	);
+
+	void copyBufferToImage(
+		VkBuffer buffer,
+		VkImage image,
+		uint32_t width,
+		uint32_t height,
+		uint32_t layers,
+		Device* device,
+		VkCommandPool* CommandPool
+	);
+
+	// Mipmap generator
+	void generateMipmaps(
+		VkImage image,
+		VkFormat format,
+		int32_t texWidth,
+		int32_t texHeight,
+		uint32_t mipLevels,
+		uint32_t layerCount,
+		Device* device,
+		VkCommandPool* CommandPool
+	);
 }

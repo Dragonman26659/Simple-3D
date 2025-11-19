@@ -10,4 +10,3 @@
 
 #include "SimpleCore.h"
 #include "Renderer.h"
-#include "Component/Tools/Material.h"

@@ -5,15 +5,6 @@
 
 
 namespace Simple3D {
-    struct RenderResource {
-        RenderTarget* target = nullptr;
-
-        std::string name;
-        bool external = false;
-    };
-
-
-
     class RenderGraph {
     public:
         RenderGraph(std::string name, VkCommandPool& commandPool, Device& device);

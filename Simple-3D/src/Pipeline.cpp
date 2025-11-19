@@ -4,21 +4,20 @@
 
 
 namespace Simple3D {
-    Pipeline::Pipeline(Device& device, ShaderSet& shaderSet, VkRenderPass renderPass, RenderTarget& target)
-        : device(&device), shaderSet(&shaderSet), target(target) {
-
-        // 1. Create pipeline layout from ShaderSet reflection
+    Pipeline::Pipeline(Device& device, ShaderSet& shaderSet, VkRenderPass renderPass, RenderTarget& target, const PipelineConfig& cfg)
+        : device(&device), shaderSet(&shaderSet), target(target), config(cfg) {
+        // create layout from shaderSet reflection (unchanged)
         layout = shaderSet.CreatePipelineLayout();
 
-        // 2. Create pipeline object (graphics pipeline)
-        CreatePipeline(renderPass);
+        // create pipeline object using config
+        CreatePipeline(renderPass, config);
 
-        // Populate bindings
         PopulateBindingsFromShaderSet();
-
-        // 3. Allocate descriptor sets
         CreateDescriptorSets();
     }
+
+
+    
 
     Pipeline::~Pipeline() {
         for (auto& [name, b] : bindings) {
@@ -205,169 +204,184 @@ namespace Simple3D {
         }
     }
 
-    void Pipeline::CreatePipeline(VkRenderPass renderPass) {
-            // Build shader stages and keep them alive on the stack
-            auto shaderStages = shaderSet->GetShaderStages();
+    void Pipeline::CreatePipeline(VkRenderPass renderPass, const PipelineConfig& cfg) {
+        auto shaderStages = shaderSet->GetShaderStages();
 
-            // --- Vertex input / input assembly ---
-            VkPipelineInputAssemblyStateCreateInfo inputAssembly{ VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO };
-            inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-            inputAssembly.primitiveRestartEnable = VK_FALSE;
+        // Input assembly
+        VkPipelineInputAssemblyStateCreateInfo inputAssembly{ VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO };
+        inputAssembly.topology = cfg.topology;
+        inputAssembly.primitiveRestartEnable = VK_FALSE;
 
+        // Vertex input
+        VkPipelineVertexInputStateCreateInfo vertexInputInfo{ VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO };
+        if (cfg.useVertexInput) {
             auto bindingDescription = Vertex::getBindingDescription();
             auto attributeDescriptions = Vertex::getAttributeDescriptions();
-
-            VkPipelineVertexInputStateCreateInfo vertexInputInfo{ VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO };
             vertexInputInfo.vertexBindingDescriptionCount = 1;
-            vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size());
             vertexInputInfo.pVertexBindingDescriptions = &bindingDescription;
+            vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size());
             vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
-
-            // --- Viewport state (we'll make viewport/scissor dynamic) ---
-            VkPipelineViewportStateCreateInfo viewportState{ VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO };
-            viewportState.viewportCount = 1;
-            viewportState.scissorCount = 1;
-            viewportState.pViewports = nullptr; // OK because we will use dynamic state
-            viewportState.pScissors = nullptr;
-
-            // --- Rasterizer ---
-            VkPipelineRasterizationStateCreateInfo rasterizer{ VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO };
-            rasterizer.depthClampEnable = VK_FALSE;
-            rasterizer.rasterizerDiscardEnable = VK_FALSE;
-            rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
-            rasterizer.lineWidth = 1.0f;
-            rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
-            rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE;
-            rasterizer.depthBiasEnable = VK_FALSE;
-
-            // --- Multisampling ---
-            VkPipelineMultisampleStateCreateInfo multisampling{ VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO };
-            multisampling.sampleShadingEnable = VK_FALSE;
-            multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
-
-            // --- Color blend: must provide one VkPipelineColorBlendAttachmentState per color attachment ---
-            // Determine number of color attachments (RenderTarget::GetAttachmentViews returns color + optional depth)
-            uint32_t attachmentCount = 1;
-            {
-                std::vector<VkImageView> tmp = target.GetAttachmentViews(0);
-                // tmp contains color followed by depth (if any). colorCount = tmp.size() - (HasDepth ? 1 : 0)
-                attachmentCount = static_cast<uint32_t>(tmp.size() - (target.HasDepth() ? 1u : 0u));
-                if (attachmentCount == 0) attachmentCount = 1; // fallback (shouldn't happen)
-            }
-
-            std::vector<VkPipelineColorBlendAttachmentState> blendAttachments(attachmentCount);
-            for (auto& att : blendAttachments) {
-                att.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
-                    VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-                att.blendEnable = VK_FALSE;
-                // configure blending here if you need it
-            }
-
-            VkPipelineColorBlendStateCreateInfo colorBlending{ VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO };
-            colorBlending.logicOpEnable = VK_FALSE;
-            colorBlending.attachmentCount = static_cast<uint32_t>(blendAttachments.size());
-            colorBlending.pAttachments = blendAttachments.data();
-
-            // --- Depth stencil: only use the struct when target.HasDepth() true ---
-            VkPipelineDepthStencilStateCreateInfo depthStencil{ VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO };
-            if (target.HasDepth()) {
-                depthStencil.depthTestEnable = VK_TRUE;
-                depthStencil.depthWriteEnable = VK_TRUE;
-                depthStencil.depthCompareOp = VK_COMPARE_OP_LESS;
-                depthStencil.depthBoundsTestEnable = VK_FALSE;
-                depthStencil.stencilTestEnable = VK_FALSE;
-            }
-            else {
-                depthStencil.depthTestEnable = VK_FALSE;
-                depthStencil.depthWriteEnable = VK_FALSE;
-                depthStencil.depthCompareOp = VK_COMPARE_OP_LESS;
-            }
-
-            // --- Dynamic state: viewport & scissor (because you call vkCmdSetViewport / vkCmdSetScissor) ---
-            std::vector<VkDynamicState> dynamicStates = {
-                VK_DYNAMIC_STATE_VIEWPORT,
-                VK_DYNAMIC_STATE_SCISSOR
-            };
-            VkPipelineDynamicStateCreateInfo dynamicState{ VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO };
-            dynamicState.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());
-            dynamicState.pDynamicStates = dynamicStates.data();
-
-            // --- Build final pipeline create info (all referenced arrays live on stack here) ---
-            VkGraphicsPipelineCreateInfo pipelineInfo{ VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO };
-            pipelineInfo.stageCount = static_cast<uint32_t>(shaderStages.size());
-            pipelineInfo.pStages = shaderStages.data();
-
-            pipelineInfo.pVertexInputState = &vertexInputInfo;
-            pipelineInfo.pInputAssemblyState = &inputAssembly;
-            pipelineInfo.pViewportState = &viewportState;
-            pipelineInfo.pRasterizationState = &rasterizer;
-            pipelineInfo.pMultisampleState = &multisampling;
-            pipelineInfo.pColorBlendState = &colorBlending;
-            pipelineInfo.pDynamicState = &dynamicState;
-
-            // Only set pDepthStencilState pointer if target HasDepth (ok to point to the local depthStencil)
-            pipelineInfo.pDepthStencilState = target.HasDepth() ? &depthStencil : nullptr;
-
-            pipelineInfo.layout = layout;
-            pipelineInfo.renderPass = renderPass;
-            pipelineInfo.subpass = 0;
-
-            if (vkCreateGraphicsPipelines(device->getLogicalDevice(), VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pipeline) != VK_SUCCESS) {
-                throw std::runtime_error("Failed to create graphics pipeline!");
-            }
         }
 
+        // Rasterizer
+        VkPipelineRasterizationStateCreateInfo rasterizer{ VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO };
+        rasterizer.depthClampEnable = cfg.depthClampEnable;
+        rasterizer.rasterizerDiscardEnable = cfg.rasterizerDiscardEnable;
+        rasterizer.polygonMode = cfg.polygonMode;
+        rasterizer.lineWidth = cfg.lineWidth;
+        rasterizer.cullMode = cfg.cullMode;
+        rasterizer.frontFace = cfg.frontFace;
+        rasterizer.depthBiasEnable = VK_FALSE;
+        rasterizer.flags = cfg.rasterizerFlags;
 
-        inline void Pipeline::CreateDescriptorPool() {
-            // accumulate counts per descriptor type
-            std::unordered_map<VkDescriptorType, uint32_t> counts;
-            for (auto& [name, binding] : bindings) {
-                counts[binding.type] += binding.count * MAX_FRAMES_IN_FLIGHT;
-            }
-
-            std::vector<VkDescriptorPoolSize> poolSizes;
-            poolSizes.reserve(counts.size());
-            for (auto& [type, cnt] : counts) {
-                VkDescriptorPoolSize ps{};
-                ps.type = type;
-                ps.descriptorCount = cnt;
-                poolSizes.push_back(ps);
-            }
-
-            VkDescriptorPoolCreateInfo poolInfo{ VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO };
-            poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
-            poolInfo.pPoolSizes = poolSizes.data();
-            // total number of descriptor sets (per-frame * number of set layouts)
-            poolInfo.maxSets = static_cast<uint32_t>(setLayouts.size() * MAX_FRAMES_IN_FLIGHT);
-
-            if (vkCreateDescriptorPool(device->getLogicalDevice(), &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) {
-                throw std::runtime_error("Failed to create descriptor pool for pipeline");
-            }
+        // Depth stencil
+        VkPipelineDepthStencilStateCreateInfo depthStencil{ VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO };
+        bool hasDepth = target.HasDepth();
+        if (hasDepth) {
+            depthStencil.depthTestEnable = cfg.depthTestEnable ? VK_TRUE : VK_FALSE;
+            depthStencil.depthWriteEnable = cfg.depthWriteEnable ? VK_TRUE : VK_FALSE;
+            depthStencil.depthCompareOp = cfg.depthCompareOp;
+            depthStencil.depthBoundsTestEnable = VK_FALSE;
+            depthStencil.stencilTestEnable = VK_FALSE;
         }
 
+        // Multisampling
+        VkPipelineMultisampleStateCreateInfo multisampling{ VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO };
+        multisampling.sampleShadingEnable = cfg.sampleShadingEnable;
+        multisampling.rasterizationSamples = cfg.rasterizationSamples;
 
-        void Pipeline::PopulateBindingsFromShaderSet() {
-            // Assuming ShaderSet exposes descriptorSets in a usable structure.
-            // shaderSet->descriptorSets : std::map<uint32_t, std::vector<...>> or similar
-            // Adapt to your ShaderSet::descriptorSets shape. The example below expects:
-            // shaderSet->descriptorSets: std::map<uint32_t, std::vector<DescriptorEntry>>
-            // where DescriptorEntry has fields: binding, set, type, count, name, stageFlags
+        // Viewport state (required even if dynamic)
+        VkPipelineViewportStateCreateInfo viewportState{ VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO };
+        viewportState.viewportCount = 1;
+        viewportState.pViewports = nullptr;
+        viewportState.scissorCount = 1;
+        viewportState.pScissors = nullptr;
 
-            bindings.clear();
+        // Blending
+        uint32_t attachmentCount = std::max<uint32_t>(1, target.GetColorAttachmentCount());
+        std::vector<VkPipelineColorBlendAttachmentState> blendAttachments = cfg.blendAttachments.empty()
+            ? PipelineConfig::MakeDefaultForAttachments(attachmentCount).blendAttachments
+            : cfg.blendAttachments;
 
-            // Access the map on ShaderSet (make it friend or accessor if needed).
-            for (const auto& [setIndex, entries] : shaderSet->GetDescriptorMap()) {
-                for (const auto& e : entries) {
-                    BindingInfo bi;
-                    bi.name = e.name;
-                    bi.binding = e.binding;
-                    bi.set = setIndex; // the descriptor set index
-                    bi.type = e.type;
-                    bi.count = e.count;
-                    bi.stageFlags = e.stageFlags;
-                    bindings[bi.name] = bi;
-                }
+        VkPipelineColorBlendStateCreateInfo colorBlending{ VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO };
+        colorBlending.attachmentCount = static_cast<uint32_t>(blendAttachments.size());
+        colorBlending.pAttachments = blendAttachments.data();
+
+        // Dynamic state
+        VkPipelineDynamicStateCreateInfo dynamicState{ VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO };
+        dynamicState.dynamicStateCount = static_cast<uint32_t>(cfg.dynamicStates.size());
+        dynamicState.pDynamicStates = cfg.dynamicStates.data();
+
+        // Build pipeline
+        VkGraphicsPipelineCreateInfo pipelineInfo{ VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO };
+        pipelineInfo.stageCount = static_cast<uint32_t>(shaderStages.size());
+        pipelineInfo.pStages = shaderStages.data();
+        pipelineInfo.pVertexInputState = &vertexInputInfo;
+        pipelineInfo.pInputAssemblyState = &inputAssembly;
+        pipelineInfo.pViewportState = &viewportState;
+        pipelineInfo.pRasterizationState = &rasterizer;
+        pipelineInfo.pMultisampleState = &multisampling;
+        pipelineInfo.pColorBlendState = &colorBlending;
+        pipelineInfo.pDynamicState = &dynamicState;
+        pipelineInfo.pDepthStencilState = hasDepth ? &depthStencil : nullptr;
+        pipelineInfo.layout = layout;
+        pipelineInfo.renderPass = renderPass;
+        pipelineInfo.subpass = cfg.subpass;
+        pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
+        pipelineInfo.basePipelineIndex = -1;
+
+        if (vkCreateGraphicsPipelines(device->getLogicalDevice(), VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pipeline) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to create graphics pipeline!");
+        }
+    }
+
+
+    inline void Pipeline::CreateDescriptorPool() {
+        // accumulate counts per descriptor type
+        std::unordered_map<VkDescriptorType, uint32_t> counts;
+        for (auto& [name, binding] : bindings) {
+            counts[binding.type] += binding.count * MAX_FRAMES_IN_FLIGHT;
+        }
+
+        std::vector<VkDescriptorPoolSize> poolSizes;
+        poolSizes.reserve(counts.size());
+        for (auto& [type, cnt] : counts) {
+            VkDescriptorPoolSize ps{};
+            ps.type = type;
+            ps.descriptorCount = cnt;
+            poolSizes.push_back(ps);
+        }
+
+        VkDescriptorPoolCreateInfo poolInfo{ VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO };
+        poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
+        poolInfo.pPoolSizes = poolSizes.data();
+        // total number of descriptor sets (per-frame * number of set layouts)
+        poolInfo.maxSets = static_cast<uint32_t>(setLayouts.size() * MAX_FRAMES_IN_FLIGHT);
+
+        if (vkCreateDescriptorPool(device->getLogicalDevice(), &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to create descriptor pool for pipeline");
+        }
+    }
+
+
+    void Pipeline::PopulateBindingsFromShaderSet() {
+        // Assuming ShaderSet exposes descriptorSets in a usable structure.
+        // shaderSet->descriptorSets : std::map<uint32_t, std::vector<...>> or similar
+        // Adapt to your ShaderSet::descriptorSets shape. The example below expects:
+        // shaderSet->descriptorSets: std::map<uint32_t, std::vector<DescriptorEntry>>
+        // where DescriptorEntry has fields: binding, set, type, count, name, stageFlags
+
+        bindings.clear();
+
+        // Access the map on ShaderSet (make it friend or accessor if needed).
+        for (const auto& [setIndex, entries] : shaderSet->GetDescriptorMap()) {
+            for (const auto& e : entries) {
+                BindingInfo bi;
+                bi.name = e.name;
+                bi.binding = e.binding;
+                bi.set = setIndex;
+                bi.type = e.type;
+                bi.count = e.count;
+                bi.stageFlags = e.stageFlags;
+                bindings[bi.name] = bi;
             }
         }
+    }
+
+
+
+    const PushConstantRange* Pipeline::FindPushConstantRange(VkShaderStageFlags stageFlags) {
+        for (auto& pc : shaderSet->pushConstants) {
+            if (pc.stageFlags & stageFlags) {
+                return &pc;
+            }
+        }
+        return nullptr;
+    }
+
+
+
+
+    void Pipeline::PushConstants(
+        VkCommandBuffer cmd,
+        const void* data,
+        size_t size,
+        VkShaderStageFlags stageFlags)
+    {
+        auto* range = FindPushConstantRange(stageFlags);
+        if (!range) {
+            printf("No push constant range for stage!");
+            throw std::runtime_error("No push constant range for stage!");
+        }
+
+        vkCmdPushConstants(
+            cmd,
+            layout,
+            stageFlags,
+            range->offset,        // use SPIRV-reflect offset
+            (uint32_t)size,
+            data
+        );
+    }
 }
 

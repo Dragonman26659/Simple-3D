@@ -53,11 +53,21 @@ namespace Simple3D {
 	};
 
 
+	struct RenderResource {
+		RenderTarget* target = nullptr;
+
+		std::string name;
+		bool external = false;
+	};
+
 
 	struct RenderData {
 		std::vector<Model*> models;
 		std::unordered_map<Model*, std::vector<UniformBufferObject>> instancedModels;
 		std::vector<Light> lights;
+
+
+		std::unordered_map<std::string, void*> FrameResouces;
 	};
 
 
@@ -71,10 +81,13 @@ namespace Simple3D {
 		// Resources this pass depends on
 		std::vector<std::string> inputResources;
 		std::vector<std::string> outputResources;
+		std::unordered_map<std::string, VkDescriptorSet> BoundResources;
 
 
 		void GenerateRenderPass();
 		void CreatePipelines(std::vector<ShaderSet*> shaders);
+
+		virtual void SetUpPass() = 0;
 		virtual void Execute(VkCommandBuffer cmd, const RenderData& data, uint32_t currentFrame) = 0;
 
 		virtual ~RenderPass() = default;
@@ -82,5 +95,6 @@ namespace Simple3D {
 		VkRenderPass renderPass = VK_NULL_HANDLE;
 		Device* device;
 		VkCommandPool* commandPool;
+		PipelineConfig PassConfig;
 	};
 }

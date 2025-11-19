@@ -9,6 +9,48 @@ namespace Simple3D {
         this->camera = camera;
     }
 
+    void ForwardPass::SetUpPass() {
+        // --- Configure the pipeline for a forward (geometry) pass ---
+        uint32_t colorAttachmentCount = renderInfo.target.GetColorAttachmentCount();
+        PassConfig = PipelineConfig::MakeDefaultForAttachments(colorAttachmentCount);
+
+        // Vertex input enabled (geometry)
+        PassConfig.useVertexInput = true;
+        PassConfig.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+
+        // Rasterizer
+        PassConfig.cullMode = VK_CULL_MODE_BACK_BIT;
+        PassConfig.frontFace = VK_FRONT_FACE_CLOCKWISE;
+        PassConfig.polygonMode = VK_POLYGON_MODE_FILL;
+        PassConfig.depthClampEnable = VK_FALSE;
+        PassConfig.rasterizerDiscardEnable = VK_FALSE;
+        PassConfig.lineWidth = 1.0f;
+
+        // Depth test/write (standard forward rendering)
+        PassConfig.depthTestEnable = true;
+        PassConfig.depthWriteEnable = true;
+        PassConfig.depthCompareOp = VK_COMPARE_OP_LESS;
+
+        // Multisampling (if you later add MSAA support)
+        PassConfig.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+        PassConfig.sampleShadingEnable = VK_FALSE;
+
+        // Color blending: no transparency by default, but can be configured per material
+        for (auto& att : PassConfig.blendAttachments) {
+            att.blendEnable = VK_FALSE;
+            att.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+                VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+        }
+
+        // Dynamic states
+        PassConfig.dynamicStates = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
+
+        // Subpass (0 for single-pass)
+        PassConfig.depthTestEnable = renderInfo.target.HasDepth();
+        PassConfig.depthWriteEnable = renderInfo.target.HasDepth();
+        PassConfig.subpass = 0;
+    }
+
     void ForwardPass::Execute(VkCommandBuffer cmd, const RenderData& data, uint32_t imageIndex) {
         if (!renderInfo.target.IsValid()) {
             throw std::runtime_error("Invalid render target in GeometryPass!");
@@ -105,7 +147,7 @@ namespace Simple3D {
                 objectUBO.proj = camera->getProjectionMatrix(extent.width, extent.height);
                 objectUBO.cameraPos = camera->position;
 
-                pipeline->BindData("ubo", &objectUBO, sizeof(objectUBO));
+                pipeline->PushConstants(cmd, &objectUBO, sizeof(objectUBO), VK_SHADER_STAGE_VERTEX_BIT);
 
                 // --- Bind material textures
                 for (const std::string& texname : model->material->sortedTextureNames) {

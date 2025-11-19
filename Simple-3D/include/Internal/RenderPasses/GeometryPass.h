@@ -11,5 +11,6 @@ namespace Simple3D {
 
         ForwardPass(Camera* camera);
         void Execute(VkCommandBuffer cmd, const RenderData& data, uint32_t currentFrame) override;
+        void SetUpPass() override;
     };
 }

@@ -446,6 +446,19 @@ int main() {
     renderer->BuildRenderGraphs();
 
 
+
+
+
+
+
+
+    Simple3D::RenderData RenderData;
+
+    RenderData.models.push_back(myModel);
+    RenderData.lights.push_back(*myLight);
+
+
+
     // Main loop
     bool running = true;
     SDL_Event event;
@@ -578,16 +591,13 @@ int main() {
             ImGui::Render();
         }
 
-
-        renderer->SubmitModel(myModel, imguiGraph);
-        renderer->SubmitLight(myLight, imguiGraph);
-
 #endif // USEIMGUI
 
-        renderer->SubmitModel(myModel, mainGraph);
-        renderer->SubmitLight(myLight, mainGraph);
 
-        renderer->Render();
+
+
+
+        renderer->Render(RenderData);
 
         lastFrameTime = currentTime;
         float frameTime = SDL_GetTicks() / 1000.0f - currentTime;

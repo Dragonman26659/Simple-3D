@@ -63,11 +63,12 @@ namespace Simple3D {
 
         std::unordered_map<uint32_t, std::vector<DescriptorBinding>> GetDescriptorMap() const { return descriptorSets; }
 
+        std::vector<PushConstantRange> pushConstants;
+
     private:
         VkDevice device;
         std::vector<ShaderStageInfo> stages;
         std::unordered_map<uint32_t, std::vector<DescriptorBinding>> descriptorSets;
-        std::vector<PushConstantRange> pushConstants;
         std::string name;
 
         VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;

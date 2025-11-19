@@ -27,6 +27,8 @@ namespace Simple3D {
     // --- Generate: create renderpasses and then compile+build ---
     void RenderGraph::Generate(Device& device, std::vector<ShaderSet*> shaders)
     {
+        printf("Compiling shaders...\n");
+
 
         // Compile the graph into execution order
         Compile();
@@ -176,6 +178,18 @@ namespace Simple3D {
                 pass.renderInfo.target = *resources[pass.outputResources[0]].target;
             }
 
+            for (auto& inputName : pass.inputResources)
+            {
+                auto& res = resources[inputName];
+
+                if (!res.target->IsTexture()) {
+                    printf("Input has no corrosponding texture, skipping...\n");
+                    continue;
+                }
+
+                pass.BoundResources[inputName] = res.target->texture->getBinding()->descriptorSet;
+            }
+
             
             pass.GenerateRenderPass();
             pass.CreatePipelines(shaders);
@@ -207,6 +221,9 @@ namespace Simple3D {
         const auto& target = renderInfo.target;
         if (!target.IsValid())
             throw std::runtime_error("RenderPass::GenerateRenderPass() -> Invalid RenderTarget!");
+
+
+        SetUpPass();
 
         bool hasDepth = target.HasDepth();
 
@@ -269,7 +286,7 @@ namespace Simple3D {
         if (vkCreateRenderPass(device->getLogicalDevice(), &renderPassInfo, nullptr, &renderPass) != VK_SUCCESS)
             throw std::runtime_error("RenderPass::GenerateRenderPass() -> Failed to create VkRenderPass!");
 
-        // --- Assign debug name for RenderDoc / Nsight ---
+        // Assign debug name
         SetObjectName(
             device->getLogicalDevice(),
             reinterpret_cast<uint64_t>(renderPass),
@@ -284,7 +301,7 @@ namespace Simple3D {
         if (renderPass == VK_NULL_HANDLE) return;
 
         for (ShaderSet* shaderset : shaders) {
-            renderInfo.Pipelines[shaderset] = new Pipeline(*device, *shaderset, renderPass, renderInfo.target);
+            renderInfo.Pipelines[shaderset] = new Pipeline(*device, *shaderset, renderPass, renderInfo.target, PassConfig);
         }
     }
 }

@@ -58,16 +58,33 @@ layout(binding = 7) uniform sampler2D Roughness;
 
 vec3 getNormal(vec3 normalMap)
 {
+    // normalMap is sampled RGB in [0,1]
+    // Convert to [-1,1] and normalize (tangent-space normal)
     vec3 Nmap = normalize(normalMap * 2.0 - 1.0);
 
+    // Face normal (already in the same space as tangent.xyz)
     vec3 N = normalize(Normal_Face);
-    vec3 T = normalize(tangent.xyz - dot(tangent.xyz, N) * N);
-    vec3 B = normalize(cross(N, T)) * tangent.w;
 
+    // Make tangent orthogonal to N (Gram-Schmidt)
+    vec3 T = tangent.xyz;
+    T = T - N * dot(N, T);
+    if (length(T) < 1e-6) {
+        // fallback tangent if degenerate
+        vec3 up = abs(N.y) < 0.999 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
+        T = normalize(cross(up, N));
+    } else {
+        T = normalize(T);
+    }
+
+    // Bitangent from cross(N, T) and apply handedness stored in tangent.w
+    vec3 B = cross(N, T) * tangent.w;
+
+    // Build TBN (columns are T, B, N)
     mat3 TBN = mat3(T, B, N);
 
-    // Transform and normalize the normal map vector into world space
-    return normalize(TBN * Nmap);
+    // Transform map normal from tangent space to world/view space and normalize
+    vec3 worldNormal = normalize(TBN * Nmap);
+    return worldNormal;
 }
 
 

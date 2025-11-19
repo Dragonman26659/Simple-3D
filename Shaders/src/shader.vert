@@ -6,7 +6,7 @@ layout(location = 2) in vec3 normal;
 layout(location = 3) in vec2 inTexCoord;
 layout(location = 4) in vec4 inTangent;
 
-layout(binding = 0) uniform UniformBufferObject {
+layout(push_constant) uniform UniformBufferObject {
     mat4 model;
     mat4 view;
     mat4 proj;
