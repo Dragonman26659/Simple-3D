@@ -8,7 +8,9 @@
 #ifndef DEBUG
 const bool enableValidationLayers = false;
 #else
+#ifndef NOVALIDATION
 const bool enableValidationLayers = true;
+#endif // !NOVALIDATION
 #endif
 
 
@@ -70,18 +72,18 @@ struct Vertex {
     glm::vec3 normal;
     glm::vec2 texCoord;
     glm::vec4 tangent;
+    int textureID;
 
     static VkVertexInputBindingDescription getBindingDescription() {
         VkVertexInputBindingDescription bindingDescription{};
         bindingDescription.binding = 0;
         bindingDescription.stride = sizeof(Vertex);
         bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-
         return bindingDescription;
     }
 
-    static std::array<VkVertexInputAttributeDescription, 5> getAttributeDescriptions() {
-        std::array<VkVertexInputAttributeDescription, 5> attributeDescriptions{};
+    static std::array<VkVertexInputAttributeDescription, 6> getAttributeDescriptions() {
+        std::array<VkVertexInputAttributeDescription, 6> attributeDescriptions{};
 
         attributeDescriptions[0].binding = 0;
         attributeDescriptions[0].location = 0;
@@ -107,6 +109,10 @@ struct Vertex {
         attributeDescriptions[4].location = 4;
         attributeDescriptions[4].format = VK_FORMAT_R32G32B32A32_SFLOAT;
         attributeDescriptions[4].offset = offsetof(Vertex, tangent);
+        attributeDescriptions[5].binding = 0;
+        attributeDescriptions[5].location = 5;
+        attributeDescriptions[5].format = VK_FORMAT_R32_SINT;
+        attributeDescriptions[5].offset = offsetof(Vertex, textureID);
 
         return attributeDescriptions;
     }
@@ -116,10 +122,10 @@ struct Vertex {
             color == other.color &&
             normal == other.normal &&
             texCoord == other.texCoord &&
-            tangent == other.tangent;
+            tangent == other.tangent &&
+            textureID == other.textureID;
     }
 };
-
 
 namespace std {
     template<> struct hash<Vertex> {
@@ -128,11 +134,11 @@ namespace std {
             size_t h2 = hash<glm::vec3>()(vertex.normal);
             size_t h3 = hash<glm::vec2>()(vertex.texCoord);
             size_t h4 = hash<glm::vec4>()(vertex.tangent);
-            return (((h1 ^ (h2 << 1)) >> 1) ^ (h3 << 1)) ^ (h4 << 1);
+            size_t h5 = hash<int>()(vertex.textureID);
+            return (((((h1 ^ (h2 << 1)) >> 1) ^ (h3 << 1)) ^ (h4 << 1)) ^ (h5 << 1));
         }
     };
 }
-
 
 // Transform Object
 struct UniformBufferObject {

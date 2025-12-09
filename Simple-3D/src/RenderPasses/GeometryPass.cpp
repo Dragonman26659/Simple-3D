@@ -5,7 +5,7 @@
 namespace Simple3D {
     ForwardPass::ForwardPass(Camera* camera) {
         this->type = PassType::Render;
-        this->name = "GeometryPass";
+        this->name = "ForwardPass";
         this->camera = camera;
     }
 
@@ -55,6 +55,8 @@ namespace Simple3D {
         if (!renderInfo.target.IsValid()) {
             throw std::runtime_error("Invalid render target in GeometryPass!");
         }
+
+        renderInfo.target.TransitionForWrite(cmd, imageIndex);
 
         RenderTarget& target = renderInfo.target;
         const VkExtent2D extent = target.GetExtent();
@@ -178,7 +180,7 @@ namespace Simple3D {
 
         // --- 8. Transition for sampling
         if (target.IsTexture()) {
-            target.texture->TransitionForRead(cmd, 0);
-        }
+            target.TransitionForRead(cmd, imageIndex);
+		}
     }
 }

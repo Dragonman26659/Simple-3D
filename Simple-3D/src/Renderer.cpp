@@ -166,6 +166,8 @@ namespace Simple3D {
 // TODO MAKE THIS A PASS IN RENDERGRAPH
 #ifdef USEIMGUI
 		if (usingImgui) {
+			
+
 			// First barrier: Transition to SHADER_READ_ONLY_OPTIMAL
 			VkImageMemoryBarrier barrier1{};
 			barrier1.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -214,7 +216,7 @@ namespace Simple3D {
 			barrier2.subresourceRange.levelCount = 1;
 			barrier2.subresourceRange.baseArrayLayer = 0;
 			barrier2.subresourceRange.layerCount = 1;
-			barrier2.oldLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+			barrier2.oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 			barrier2.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 			barrier2.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
 			barrier2.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT;
@@ -298,6 +300,10 @@ namespace Simple3D {
 		return CreateTextureBinding(filepath, RenderDevice, &commandPool);
 	}
 
+	TextureCube Renderer::CreateTextureCube(std::vector<std::string> filepath) {
+		return TextureCube(*RenderDevice, filepath, true, &commandPool);
+	}
+
 	DepthBuffer* Renderer::CreateDepth(RenderTarget target) {
 		return new DepthBuffer(RenderDevice, target.GetExtent(), &commandPool);
 	}
@@ -376,7 +382,7 @@ namespace Simple3D {
 		vkDestroySurfaceKHR(instance, surface, nullptr);
 
 		// Cleanup debug messenger
-		if (enableValidationLayers) {
+		if (enableValidationLayers && VALIDATION_LAYERS_ENABLED) {
 			DestroyDebugUtilsMessengerEXT(instance, debugMessenger, nullptr);
 		}
 
@@ -408,14 +414,14 @@ namespace Simple3D {
 		createInfo.ppEnabledExtensionNames = extensions.data();
 
 		// Validation layers -- Checking for support
-		if (enableValidationLayers && !checkValidationLayerSupport()) {
+		if (enableValidationLayers && VALIDATION_LAYERS_ENABLED && !checkValidationLayerSupport()) {
 			printf("validation layers requested, but not available!\n");
 			//enableValidationLayers = false;
 			throw std::runtime_error("validation layers requested, but not available!\n");
 		}
 
 		// Handle validation layers
-		if (enableValidationLayers) {
+		if (enableValidationLayers && VALIDATION_LAYERS_ENABLED) {
 			createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
 			createInfo.ppEnabledLayerNames = validationLayers.data();
 		}
@@ -461,7 +467,7 @@ namespace Simple3D {
 
 		std::vector<const char*> extensions(WindowExtensions, WindowExtensions + WindowExtensionCount);
 
-		if (enableValidationLayers) {
+		if (enableValidationLayers && VALIDATION_LAYERS_ENABLED) {
 			extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
 		}
 
@@ -471,7 +477,7 @@ namespace Simple3D {
 	}
 
 	void Renderer::setupDebugMessenger() {
-		if (!enableValidationLayers) return;
+		if (!enableValidationLayers && VALIDATION_LAYERS_ENABLED) return;
 	
 		VkDebugUtilsMessengerCreateInfoEXT createInfo{};
 		createInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;

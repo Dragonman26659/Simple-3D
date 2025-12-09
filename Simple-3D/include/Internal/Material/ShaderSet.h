@@ -46,7 +46,7 @@ namespace Simple3D {
     class ShaderSet {
     public:
         ShaderSet(VkDevice device, std::string name);
-
+        ~ShaderSet() {}
 
         bool LoadStage(const std::string& path, ShaderStage stage);
         bool Reflect();

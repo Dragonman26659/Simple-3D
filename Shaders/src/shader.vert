@@ -5,6 +5,7 @@ layout(location = 1) in vec3 inColor;
 layout(location = 2) in vec3 normal;
 layout(location = 3) in vec2 inTexCoord;
 layout(location = 4) in vec4 inTangent;
+layout(location = 5) in int textureID;
 
 layout(push_constant) uniform UniformBufferObject {
     mat4 model;

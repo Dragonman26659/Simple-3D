@@ -17,8 +17,6 @@ namespace Simple3D {
 		int width, height;
 	};
 
-
-
 	void createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buffer, VkDeviceMemory& bufferMemory, Device* device);
 
 	uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties, Device* device);
@@ -33,7 +31,6 @@ namespace Simple3D {
 
 	void transitionImageLayout(VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout, Device* device, VkCommandPool* commandPool);
 
-
 	VkImageView createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags, Device* device);
 
 	VkFormat findDepthFormat(Device* device);
@@ -45,7 +42,6 @@ namespace Simple3D {
 	void createImage(uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage& image, VkDeviceMemory& imageMemory, Device* device);
 
 	void createTextureSampler(TextureBinding* binding, Device* device);
-
 
 	TextureBinding CreateTextureBinding(std::string filepath, Device* r_device, VkCommandPool* r_commandPool);
 
@@ -73,9 +69,7 @@ namespace Simple3D {
 	}
 
 
-	// FOR CUBEMAPS (Replace old ones with this eventually)
-
-
+	//========================= FOR CUBEMAPS (Replace old ones with this eventually) =====================================
 
 	// create image (2D or Cubemap)
 	void createImage(

@@ -116,5 +116,8 @@ namespace Simple3D {
 			}
 			return 0;
 		}
+
+		void TransitionForRead(VkCommandBuffer cmdBuf, uint32_t currentFrame) const;
+		void TransitionForWrite(VkCommandBuffer cmdBuf, uint32_t currentFrame) const;
 	};
 }

@@ -17,6 +17,7 @@
 #include "Component/Renderable/Model.h"
 #include "Component/Tools/Camera.h"
 #include "Component/Tools/Lights.h"
+#include "Internal/Tex3D.h"
 
 // RenderPasses
 #include "Internal/RenderPasses/GeometryPass.h"
@@ -30,8 +31,8 @@ namespace Simple3D {
 	public:
 		// Changes based on if you use SDL or GLFW for windowing
 #ifdef SDL_WINDOW
-		Renderer(SDL_Window* window, std::string EngineName, std::string ApplicationName)
-			: window(window) {
+		Renderer(SDL_Window* window, std::string EngineName, std::string ApplicationName, bool useValidation = true)
+			: window(window), VALIDATION_LAYERS_ENABLED(useValidation) {
 			// Get Information from window
 			int width, height;
 			SDL_GetWindowSize(window, &width, &height);
@@ -187,6 +188,7 @@ namespace Simple3D {
 		void BuildRenderGraphs();
 
 		TextureBinding CreateTexture(std::string filepath);
+		TextureCube CreateTextureCube(std::vector<std::string> filepath);
 
 		// Dosent expose vulkan directly but alows for renderTargets to be made
 		SwapChain* GetSwapChain() { return swapChain; }
@@ -194,6 +196,8 @@ namespace Simple3D {
 		RenderTexture* CreateRenderTexture(int width, int height);
 		DepthBuffer* CreateDepth(RenderTarget target);
 
+
+		bool VALIDATION_LAYERS_ENABLED = true;
 
 #ifdef USEIMGUI
 		// Returns all needed information to be able to use Imgui

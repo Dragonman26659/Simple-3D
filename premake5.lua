@@ -57,15 +57,6 @@ project "Simple-3D"
         "vulkan-1.lib"
     }
     
-    filter "configurations:Debug"
-        defines {"DEBUG"}
-        symbols "On"
-
-    filter "configurations:Release"
-        defines {"NDEBUG"}
-        symbols "On"
-        runtime "Release"
-    
     filter "system:windows"
         cppdialect "C++17"
         systemversion "latest"
