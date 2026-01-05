@@ -36,10 +36,16 @@ namespace Simple3D {
         }
     }
 
-    Material::~Material() {
+    Material::~Material()
+    {
         // Clean up all textures
-        for (const auto& pair : textures) {
-            DestroyImage(pair.second);
+        for (auto tex : sortedTextureNames) {
+            DestroyImage(textures[tex]);
+        }
+
+        if (descriptorPool != VK_NULL_HANDLE) {
+            vkDestroyDescriptorPool(r_device->getLogicalDevice(), descriptorPool, nullptr);
+            descriptorPool = VK_NULL_HANDLE;
         }
     }
 
@@ -118,5 +124,122 @@ namespace Simple3D {
         vkDestroyImageView(r_device->getLogicalDevice(), binding.view, nullptr);
         vkFreeMemory(r_device->getLogicalDevice(), binding.textureImageMemory, nullptr);
         vkDestroyImage(r_device->getLogicalDevice(), binding.textureImage, nullptr);
+    }
+
+    void Material::CreateDescriptorSets()
+    {
+        constexpr uint32_t MATERIAL_SET = 1;
+
+        const auto& setLayouts = shaders->GetDescriptorSetLayouts();
+
+        if (MATERIAL_SET >= setLayouts.size()) {
+            DescritorsNeeded = false;
+            return;
+        }
+
+        descriptorSetLayout = setLayouts[MATERIAL_SET];
+        descriptorSets.resize(MAX_FRAMES_IN_FLIGHT);
+
+        // ---- Build descriptor pool from reflected bindings ----
+        std::unordered_map<VkDescriptorType, uint32_t> typeCounts;
+
+        const auto& descriptorMap = shaders->GetDescriptorMap();
+        auto it = descriptorMap.find(MATERIAL_SET);
+        if (it == descriptorMap.end()) {
+            throw std::runtime_error("Material set missing in descriptor map");
+        }
+
+        for (const auto& binding : it->second) {
+            typeCounts[binding.type] += binding.count * MAX_FRAMES_IN_FLIGHT;
+        }
+
+        std::vector<VkDescriptorPoolSize> poolSizes;
+        for (const auto& [type, count] : typeCounts) {
+            poolSizes.push_back({ type, count });
+        }
+
+        VkDescriptorPoolCreateInfo poolInfo{ VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO };
+        poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
+        poolInfo.pPoolSizes = poolSizes.data();
+        poolInfo.maxSets = MAX_FRAMES_IN_FLIGHT;
+
+        vkCreateDescriptorPool(
+            r_device->getLogicalDevice(),
+            &poolInfo,
+            nullptr,
+            &descriptorPool
+        );
+
+        std::vector<VkDescriptorSetLayout> layouts(
+            MAX_FRAMES_IN_FLIGHT, descriptorSetLayout
+        );
+
+        VkDescriptorSetAllocateInfo alloc{ VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
+        alloc.descriptorPool = descriptorPool;
+        alloc.descriptorSetCount = MAX_FRAMES_IN_FLIGHT;
+        alloc.pSetLayouts = layouts.data();
+
+        vkAllocateDescriptorSets(
+            r_device->getLogicalDevice(),
+            &alloc,
+            descriptorSets.data()
+        );
+
+        CreatedDescriptors = true;
+    }
+
+    void Material::UpdateDescriptors(uint32_t frameIndex)
+    {
+        if (!DescritorsNeeded)
+            return;
+
+        if (!CreatedDescriptors)
+            CreateDescriptorSets();
+
+
+        std::vector<VkWriteDescriptorSet> writes;
+        std::vector<VkDescriptorImageInfo> imageInfos;
+
+        for (const auto& [name, tex] : textures) {
+            const DescriptorBinding* refl = shaders->GetBinding(name);
+
+            if (!refl) {
+                continue;
+            }
+
+            if (refl->set != 1) {
+                continue;
+            }
+
+            if (refl->type != VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER &&
+                refl->type != VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE) {
+                continue;
+            }
+
+            VkDescriptorImageInfo img{};
+            img.imageView = tex.view;
+            img.sampler = tex.sampler;
+            img.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+            imageInfos.push_back(img);
+
+            VkWriteDescriptorSet write{ VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
+            write.dstSet = descriptorSets[frameIndex];
+            write.dstBinding = refl->binding;
+            write.dstArrayElement = 0;
+            write.descriptorType = refl->type;
+            write.descriptorCount = 1;
+            write.pImageInfo = &imageInfos.back();
+
+            writes.push_back(write);
+        }
+
+        vkUpdateDescriptorSets(
+            r_device->getLogicalDevice(),
+            static_cast<uint32_t>(writes.size()),
+            writes.data(),
+            0,
+            nullptr
+        );
     }
 }

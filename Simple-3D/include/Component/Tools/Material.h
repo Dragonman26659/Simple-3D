@@ -29,15 +29,21 @@ namespace Simple3D {
 
 		Device* r_device = nullptr;
 		VkCommandPool* r_commandPool;
+		std::vector<VkDescriptorSet> descriptorSets;
 
-		ShaderSet* shaders;
+		VkDescriptorSetLayout descriptorSetLayout = VK_NULL_HANDLE;
+		VkDescriptorPool descriptorPool = VK_NULL_HANDLE;
 
-		// Textures
+		void CreateDescriptorSets();
+		void UpdateDescriptors(uint32_t frameIndex);
+
+		ShaderSet* shaders = nullptr;
+		bool CreatedDescriptors = false;
+		bool DescritorsNeeded = true;
+
 		std::unordered_map<std::string, TextureBinding> textures;
-
 		std::vector<std::string> sortedTextureNames;
 	private:
-
 
 		// texture Bindings
 		TextureBinding CreateTexture(std::string texture);

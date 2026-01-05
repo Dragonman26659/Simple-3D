@@ -94,6 +94,7 @@ namespace Simple3D {
         // Bind arbitrary data (UBO, texture, storage buffer) by descriptor name
         void BindData(const std::string& name, const void* data, size_t size, uint32_t arrayIndex = 0);
         void BindData(const std::string& name, const VkDescriptorImageInfo& imgInfo, uint32_t arrayIndex = 0);
+        void BindMaterial(VkCommandBuffer cmd, Material& material, uint32_t frameIndex);
 
 
         // Binding per object Data
@@ -113,6 +114,8 @@ namespace Simple3D {
         inline VkDescriptorSet GetFirstDescriptorSet(uint32_t frameIndex) const {
             return descriptorSets[frameIndex].empty() ? VK_NULL_HANDLE : descriptorSets[frameIndex][0];
         }
+
+        VkDescriptorPool getDiscriptorPool() { return descriptorPool; }
 
     private:
         ShaderSet* shaderSet;

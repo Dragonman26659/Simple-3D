@@ -48,7 +48,7 @@ namespace Simple3D {
 
 
         // Set for shaders and textures
-        Material* material;
+        Material* material = nullptr;
     private:
         // Vulkan info
         Device* r_device = nullptr;

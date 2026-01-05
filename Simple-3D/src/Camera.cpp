@@ -63,7 +63,7 @@ namespace Simple3D {
         glm::vec3 forward;
         forward.x = cos(glm::radians(pitch)) * sin(glm::radians(yaw));
         forward.y = sin(glm::radians(pitch));
-        forward.z = cos(glm::radians(pitch)) * cos(glm::radians(yaw));
+        forward.z = -cos(glm::radians(pitch)) * cos(glm::radians(yaw));
         return glm::normalize(forward);
     }
 

@@ -60,16 +60,17 @@ namespace Simple3D {
         VkGraphicsPipelineCreateInfo BuildPipelineInfo(VkRenderPass renderPass, VkPipelineLayout pipelineLayout);
         std::vector<VkPipelineShaderStageCreateInfo> GetShaderStageCreateInfos() const;
         std::vector<VkPipelineShaderStageCreateInfo> GetShaderStages() const;
+        const DescriptorBinding* GetBinding(const std::string& name) const;
 
         std::unordered_map<uint32_t, std::vector<DescriptorBinding>> GetDescriptorMap() const { return descriptorSets; }
 
         std::vector<PushConstantRange> pushConstants;
+        std::string name;
 
     private:
         VkDevice device;
         std::vector<ShaderStageInfo> stages;
         std::unordered_map<uint32_t, std::vector<DescriptorBinding>> descriptorSets;
-        std::string name;
 
         VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
         std::vector<VkDescriptorSetLayout> setLayouts;

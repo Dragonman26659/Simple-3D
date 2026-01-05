@@ -4,6 +4,22 @@
 
 
 namespace Simple3D {
+    inline bool IsBufferType(VkDescriptorType type)
+    {
+        switch (type)
+        {
+        case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
+        case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC:
+        case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER:
+        case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC:
+            return true;
+
+        default:
+            return false;
+        }
+    }
+
+
     Pipeline::Pipeline(Device& device, ShaderSet& shaderSet, VkRenderPass renderPass, RenderTarget& target, const PipelineConfig& cfg)
         : device(&device), shaderSet(&shaderSet), target(target), config(cfg) {
         // create layout from shaderSet reflection (unchanged)
@@ -103,7 +119,11 @@ namespace Simple3D {
 
         // by default write to all frames (you can choose to only write the current frame)
         for (uint32_t f = 0; f < MAX_FRAMES_IN_FLIGHT; ++f) {
-            std::memcpy(binding.mappedData[f], data, size);
+            if (size > 0 && data != nullptr) {
+                for (uint32_t f = 0; f < MAX_FRAMES_IN_FLIGHT; ++f) {
+                    std::memcpy(binding.mappedData[f], data, size);
+                }
+            }
         }
     }
 
@@ -124,53 +144,59 @@ namespace Simple3D {
     }
 
 
-    void Pipeline::UpdateDescriptors(uint32_t frameIndex) {
+    void Pipeline::UpdateDescriptors(uint32_t frameIndex)
+    {
         std::vector<VkWriteDescriptorSet> writes;
-        std::vector<VkDescriptorBufferInfo> bufferInfos;  // temp storage so pointers remain valid
+        std::vector<VkDescriptorBufferInfo> bufferInfos;
         std::vector<VkDescriptorImageInfo> imageInfos;
 
-        bufferInfos.reserve(bindings.size());
-        imageInfos.reserve(bindings.size());
-
         for (auto& [name, binding] : bindings) {
-            VkWriteDescriptorSet write{};
-            write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-            write.dstSet = descriptorSets[frameIndex][binding.set];
+
+            assert(frameIndex < descriptorSets.size());
+            assert(binding.set < descriptorSets[frameIndex].size());
+
+            VkDescriptorSet dstSet = descriptorSets[frameIndex][binding.set];
+            assert(dstSet != VK_NULL_HANDLE);
+
+            VkWriteDescriptorSet write{ VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
+            write.dstSet = dstSet;
             write.dstBinding = binding.binding;
             write.dstArrayElement = 0;
             write.descriptorType = binding.type;
             write.descriptorCount = 1;
 
-            if (binding.type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER ||
-                binding.type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC ||
-                binding.type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER ||
-                binding.type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC) {
+            if (IsBufferType(binding.type)) {
+                assert(binding.buffers.size() > frameIndex);
+                assert(binding.buffers[frameIndex] != VK_NULL_HANDLE);
 
-                VkDescriptorBufferInfo bufInfo{};
-                bufInfo.buffer = binding.buffers[frameIndex];
-                bufInfo.offset = 0;
-                bufInfo.range = binding.dataSize == 0 ? VK_WHOLE_SIZE : binding.dataSize;
-                bufferInfos.push_back(bufInfo);
+                bufferInfos.push_back({
+                    binding.buffers[frameIndex],
+                    0,
+                    binding.dataSize ? binding.dataSize : VK_WHOLE_SIZE
+                    });
+
                 write.pBufferInfo = &bufferInfos.back();
+                writes.push_back(write);
             }
-            else if (binding.type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER ||
-                binding.type == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE) {
-
-                VkDescriptorImageInfo imgInfo{};
-                imgInfo.imageView = binding.imageView;
-                imgInfo.sampler = binding.sampler;
-                imgInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-                imageInfos.push_back(imgInfo);
-                write.pImageInfo = &imageInfos.back();
-            }
-
-            writes.push_back(write);
+            //else {
+            //    assert(binding.imageView != VK_NULL_HANDLE);
+            //
+            //    VkDescriptorImageInfo img{};
+            //    img.imageView = binding.imageView;
+            //    img.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            //
+            //    img.sampler =
+            //        (binding.type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)
+            //        ? binding.sampler
+            //        : VK_NULL_HANDLE;
+            //
+            //    imageInfos.push_back(img);
+            //    write.pImageInfo = &imageInfos.back();
+            //}
         }
 
         vkUpdateDescriptorSets(device->getLogicalDevice(),
-            static_cast<uint32_t>(writes.size()),
-            writes.data(),
-            0, nullptr);
+            uint32_t(writes.size()), writes.data(), 0, nullptr);
     }
 
     void Pipeline::CreateDescriptorSets() {
@@ -381,6 +407,32 @@ namespace Simple3D {
             range->offset,        // use SPIRV-reflect offset
             (uint32_t)size,
             data
+        );
+    }
+
+    void Pipeline::BindMaterial(
+        VkCommandBuffer cmd,
+        Material& material,
+        uint32_t frameIndex
+    ) {
+        constexpr uint32_t MATERIAL_SET = 1;
+        material.UpdateDescriptors(frameIndex);
+
+        VkDescriptorSet set = VK_NULL_HANDLE;
+        if (material.DescritorsNeeded)
+            set = material.descriptorSets[frameIndex];
+        else
+            return;
+
+        vkCmdBindDescriptorSets(
+            cmd,
+            VK_PIPELINE_BIND_POINT_GRAPHICS,
+            layout,
+            MATERIAL_SET,
+            1,
+            &set,
+            0,
+            nullptr
         );
     }
 }

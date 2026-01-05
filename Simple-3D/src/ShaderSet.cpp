@@ -141,7 +141,7 @@ namespace Simple3D {
                         setIndex,
                         SpvToVkDescriptorType(b->descriptor_type),
                         b->count,
-                        b->name ? b->name : "UNKNOWN_BINDING",
+                        std::string(b->name && b->name[0] != '\0' ? b->name : "UNKNOWN_BINDING"),
                         stageFlag
                         });
                 }
@@ -298,5 +298,17 @@ namespace Simple3D {
             stagesInfo.push_back(stageInfo);
         }
         return stagesInfo;
+    }
+
+
+    const DescriptorBinding* ShaderSet::GetBinding(const std::string& name) const
+    {
+        for (const auto& [setIndex, bindings] : descriptorSets) {
+            for (const auto& b : bindings) {
+                if (b.name == name)
+                    return &b;
+            }
+        }
+        return nullptr;
     }
 }
