@@ -1,10 +1,10 @@
-#include "Component/Renderable/Model.h"
+﻿#include "Component/Renderable/Model.h"
 
 
 namespace Simple3D {
 
-    Model::Model(std::vector<Vertex> verticies, std::vector<uint32_t> indices)
-        : Verticies(verticies), Indices(indices) {
+    Model::Model(std::vector<Vertex> verticies, std::vector<uint32_t> indices, bool isDynamic)
+        : Verticies(verticies), Indices(indices), DynamicModel(isDynamic) {
 
     }
 
@@ -41,6 +41,11 @@ namespace Simple3D {
     }
 
     void Model::DestroyBuffers() {
+        if (DynamicModel && vertexBufferMapped) {
+            vkUnmapMemory(r_device->getLogicalDevice(), vertexBufferMemory);
+            vertexBufferMapped = nullptr;
+        }
+
         if (vertexBuffer != VK_NULL_HANDLE) {
             vkDestroyBuffer(r_device->getLogicalDevice(), vertexBuffer, nullptr);
             vertexBuffer = VK_NULL_HANDLE;
@@ -59,21 +64,51 @@ namespace Simple3D {
     void Model::CreateVertexBuffer() {
         VkDeviceSize bufferSize = sizeof(Verticies[0]) * Verticies.size();
 
-        VkBuffer stagingBuffer;
-        VkDeviceMemory stagingBufferMemory;
-        createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer, stagingBufferMemory, r_device);
+        if (DynamicModel) {
+            // --- Dynamic mesh: host-visible, coherent, persistently mapped ---
+            createBuffer(bufferSize,
+                VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                vertexBuffer,
+                vertexBufferMemory,
+                r_device);
 
-        void* data;
-        vkMapMemory(r_device->getLogicalDevice(), stagingBufferMemory, 0, bufferSize, 0, &data);
-        memcpy(data, Verticies.data(), (size_t)bufferSize);
-        vkUnmapMemory(r_device->getLogicalDevice(), stagingBufferMemory);
+            // Optionally persistently map (for max performance)
+            vkMapMemory(r_device->getLogicalDevice(), vertexBufferMemory, 0, bufferSize, 0, &vertexBufferMapped);
+            memcpy(vertexBufferMapped, Verticies.data(), (size_t)bufferSize);
 
-        createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, vertexBuffer, vertexBufferMemory, r_device);
+        }
+        else {
+            // --- Static mesh: staging buffer → device-local ---
+            VkBuffer stagingBuffer;
+            VkDeviceMemory stagingBufferMemory;
+            createBuffer(bufferSize,
+                VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                stagingBuffer,
+                stagingBufferMemory,
+                r_device);
 
-        copyBuffer(stagingBuffer, vertexBuffer, bufferSize, r_device, r_commandPool);
+            // Copy vertex data to staging buffer
+            void* data;
+            vkMapMemory(r_device->getLogicalDevice(), stagingBufferMemory, 0, bufferSize, 0, &data);
+            memcpy(data, Verticies.data(), (size_t)bufferSize);
+            vkUnmapMemory(r_device->getLogicalDevice(), stagingBufferMemory);
 
-        vkDestroyBuffer(r_device->getLogicalDevice(), stagingBuffer, nullptr);
-        vkFreeMemory(r_device->getLogicalDevice(), stagingBufferMemory, nullptr);
+            // Create device-local vertex buffer
+            createBuffer(bufferSize,
+                VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                vertexBuffer,
+                vertexBufferMemory,
+                r_device);
+
+            copyBuffer(stagingBuffer, vertexBuffer, bufferSize, r_device, r_commandPool);
+
+            // Clean up staging
+            vkDestroyBuffer(r_device->getLogicalDevice(), stagingBuffer, nullptr);
+            vkFreeMemory(r_device->getLogicalDevice(), stagingBufferMemory, nullptr);
+        }
     }
 
     void Model::CreateIndexBuffer() {
@@ -117,4 +152,31 @@ namespace Simple3D {
     const glm::mat4 Model::GetTransform() {
         return transform;
     }
-} 
+
+    bool Model::UpdateVerticies(std::vector<Vertex> newVerticies)
+    {
+        if (!BufferEnabled || vertexBuffer == VK_NULL_HANDLE || !DynamicModel)
+            return false;
+
+        if (newVerticies.size() != Verticies.size())
+            return false;
+
+        Verticies = std::move(newVerticies);
+
+        VkDeviceSize bufferSize = sizeof(Verticies[0]) * Verticies.size();
+
+        if (vertexBufferMapped) {
+            // --- Fast path: persistently mapped ---
+            memcpy(vertexBufferMapped, Verticies.data(), (size_t)bufferSize);
+        }
+        else {
+            // --- Fallback: map/unmap each frame ---
+            void* data;
+            vkMapMemory(r_device->getLogicalDevice(), vertexBufferMemory, 0, bufferSize, 0, &data);
+            memcpy(data, Verticies.data(), (size_t)bufferSize);
+            vkUnmapMemory(r_device->getLogicalDevice(), vertexBufferMemory);
+        }
+
+        return true;
+    }
+}

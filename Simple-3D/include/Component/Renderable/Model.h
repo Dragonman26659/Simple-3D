@@ -17,7 +17,7 @@ namespace Simple3D {
 
     class Model {
     public:
-        Model(std::vector<Vertex> verticies, std::vector<uint32_t> indices);
+        Model(std::vector<Vertex> verticies, std::vector<uint32_t> indices, bool isDynamic = false);
         ~Model();
 
         // Needed to be used by renderer but dont fuck w it if ur not renderer
@@ -35,9 +35,7 @@ namespace Simple3D {
         void BindMaterial(Material* newMaterial);
 
         void SetTransform(const  glm::mat4 transform);
-
-
-        //void SetTransform(const glm::mat<4, 4, float, (glm::qualifier)0> n_transform);
+        bool UpdateVerticies(std::vector<Vertex> verticies);
 
 
 
@@ -63,11 +61,14 @@ namespace Simple3D {
         VkDeviceMemory vertexBufferMemory;
 
 
+        // Pointer To GPU vertex Map
+        void* vertexBufferMapped = nullptr;
 
         // transform
         glm::mat4 transform;
 
         bool BufferEnabled = false;
+        bool DynamicModel = false;
 
         void CreateVertexBuffer();
         void CreateIndexBuffer();

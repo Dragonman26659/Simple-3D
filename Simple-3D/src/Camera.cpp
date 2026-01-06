@@ -44,18 +44,15 @@ namespace Simple3D {
 
     // --- Look At Target ---
     void Camera::lookAt(const glm::vec3& target) {
-        // Direction from camera to target
-        glm::vec3 direction = glm::normalize(target - position);
+        glm::vec3 dir = glm::normalize(target - position);
 
-        // Compute Euler angles
-        float pitchRad = glm::asin(glm::clamp(direction.y, -1.0f, 1.0f));
-        float yawRad = glm::atan(-direction.x, -direction.z);
+        float pitchRad = glm::asin(glm::clamp(dir.y, -1.0f, 1.0f));
+        float yawRad = glm::atan(dir.x, -dir.z); // matches -Z forward
 
-        // Set rotation in degrees
         setRotation(
             glm::degrees(pitchRad),
             glm::degrees(yawRad),
-            0.0f // Keep roll at 0 for upright camera
+            0.0f
         );
     }
 
@@ -63,17 +60,15 @@ namespace Simple3D {
         glm::vec3 forward;
         forward.x = cos(glm::radians(pitch)) * sin(glm::radians(yaw));
         forward.y = sin(glm::radians(pitch));
-        forward.z = cos(glm::radians(pitch)) * cos(glm::radians(yaw));
+        forward.z = -cos(glm::radians(pitch)) * cos(glm::radians(yaw));
         return glm::normalize(forward);
     }
 
     glm::vec3 Camera::getRight() const {
-        // Always perpendicular to world up
-        return glm::normalize(glm::cross(getForward(), glm::vec3(0.0f, 1.0f, 0.0f)));
+        return glm::normalize(glm::cross(glm::vec3(0.0f, 1.0f, 0.0f), getForward()));
     }
 
     glm::vec3 Camera::getUp() const {
-        // Now recompute true up relative to corrected right vector
-        return glm::normalize(glm::cross(getRight(), getForward()));
+        return glm::normalize(glm::cross(getForward(), getRight()));
     }
 }
