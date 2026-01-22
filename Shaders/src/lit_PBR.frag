@@ -42,7 +42,6 @@ layout(std430, binding = 1) buffer LightBuffer {
 } lightBuffer;
 
 
-// Match exactly the texture names in your C++ material binding
 layout(binding = 2) uniform sampler2D AO;
 layout(binding = 3) uniform sampler2D Albedo;
 layout(binding = 4) uniform sampler2D Emissive;
