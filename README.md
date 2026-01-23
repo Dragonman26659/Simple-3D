@@ -7,7 +7,7 @@ There is support for ImGui in the renderer.
 The API is in active development and I plan to add these features in future:
 - a job system
 - dynamic rendergraphs
-- mindless texture arrays
+- bindless texture arrays
 
 
 I will provide shader templates for how to write shaders eventually 
