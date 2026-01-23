@@ -82,7 +82,7 @@ namespace Simple3D {
 
         // --- 2. Transition target texture for write
         if (target.IsTexture()) {
-            target.texture->TransitionForWrite(cmd, 0);
+            target.TransitionForWrite(cmd, 0);
         }
 
         // --- 3. Begin render pass
@@ -124,7 +124,7 @@ namespace Simple3D {
             // Update per-frame (camera + lights)
             pipeline->BindData("lightBuffer", data.lights.data(), sizeof(Light) * data.lights.size());
 
-            //pipeline->UpdateDescriptors(imageIndex);
+            pipeline->UpdateDescriptors(imageIndex);
 
             vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->GetPipeline());
 
@@ -147,21 +147,12 @@ namespace Simple3D {
                 objectUBO.model = model->GetTransform();
                 objectUBO.view = camera->getViewMatrix();
                 objectUBO.proj = camera->getProjectionMatrix(extent.width, extent.height);
-                objectUBO.cameraPos = camera->position;
+                objectUBO.cameraPos = camera->getPosition();
 
                 pipeline->PushConstants(cmd, &objectUBO, sizeof(objectUBO), VK_SHADER_STAGE_VERTEX_BIT);
 
                 // --- Bind material textures
-                for (const std::string& texname : model->material->sortedTextureNames) {
-                    const TextureBinding& binding = model->material->textures.at(texname);
-
-                    VkDescriptorImageInfo imgInfo{};
-                    imgInfo.imageView = binding.view;
-                    imgInfo.sampler = binding.sampler;
-                    imgInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-
-                    pipeline->BindData(texname, imgInfo);
-                }
+                pipeline->BindMaterial(cmd, *model->material, imageIndex);
 
                 pipeline->UpdateDescriptors(imageIndex);
 

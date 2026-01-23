@@ -7,22 +7,17 @@ namespace Simple3D {
     RenderGraph::RenderGraph(std::string name, VkCommandPool& commandPool, Device& device) : name(name), commandPool(commandPool) {
     }
 
-
-
     void RenderGraph::Execute(VkCommandBuffer cmd, RenderData data, uint32_t currentFrame) {
         for (auto* pass : executionOrder) {
             pass->Execute(cmd, data, currentFrame);
         }
     }
 
-
     RenderGraph::~RenderGraph() {
         for (RenderPass* pass : passes) {
             delete pass;
         }
     }
-
-    
 
     // --- Generate: create renderpasses and then compile+build ---
     void RenderGraph::Generate(Device& device, std::vector<ShaderSet*> shaders)
@@ -37,7 +32,6 @@ namespace Simple3D {
         // Build (create framebuffers, allocate depth textures, etc.)
         Build(device, shaders);
     }
-
 
     // Compile rendergraph to correct order
     void RenderGraph::Compile() {
@@ -80,23 +74,35 @@ namespace Simple3D {
             }
         }
     }
+
     std::vector<VkFramebuffer> RenderGraph::CreateFramebufferForTarget(
         Device& device,
         RenderTarget& target,
         VkRenderPass renderPass)
     {
         std::vector<VkFramebuffer> framebuffers;
-        VkExtent2D extent{};
+        VkExtent2D extent = target.GetExtent();
+        uint32_t imageCount = target.IsSwapchain() ? static_cast<uint32_t>(target.swapchain->getImageViews().size()) : 1;
 
-        if (target.texture) {
-            // --- Offscreen render target (single framebuffer) ---
-            std::vector<VkImageView> attachments;
-            attachments.push_back(target.texture->GetImageView()); // Color
+        framebuffers.reserve(imageCount);
 
-            if (target.HasDepth())
-                attachments.push_back(target.depthTexture->depthImageView); // Depth
+        for (uint32_t i = 0; i < imageCount; i++) {
+            // Automatically gets all color attachments (N textures) and depth if it exists
+            std::vector<VkImageView> attachments = target.GetAttachmentViews(i);
 
-            extent = target.texture->getExtent();
+            // --- Depth Resizing Logic ---
+            if (target.HasDepth()) {
+                if (target.depthTexture->extent.width != extent.width ||
+                    target.depthTexture->extent.height != extent.height)
+                {
+                    delete target.depthTexture;
+                    // Note: Ensure your DepthBuffer constructor and commandPool access are correct for your scope
+                    target.depthTexture = new DepthBuffer(&device, extent, &commandPool);
+
+                    // Re-fetch views since the depth image view just changed
+                    attachments = target.GetAttachmentViews(i);
+                }
+            }
 
             VkFramebufferCreateInfo fbInfo{};
             fbInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
@@ -108,51 +114,11 @@ namespace Simple3D {
             fbInfo.layers = 1;
 
             VkFramebuffer framebuffer{};
-            if (vkCreateFramebuffer(device.getLogicalDevice(), &fbInfo, nullptr, &framebuffer) != VK_SUCCESS)
-                throw std::runtime_error("Failed to create framebuffer for RenderTexture target!");
+            if (vkCreateFramebuffer(device.getLogicalDevice(), &fbInfo, nullptr, &framebuffer) != VK_SUCCESS) {
+                throw std::runtime_error("Failed to create framebuffer for render target!");
+            }
 
             framebuffers.push_back(framebuffer);
-        }
-        else if (target.swapchain) {
-            // --- Swapchain render target (one framebuffer per swapchain image) ---
-            const auto& views = target.swapchain->getImageViews();
-            extent = target.swapchain->GetSwapChainExtent();
-
-            framebuffers.reserve(views.size());
-
-            for (const auto& colorView : views) {
-                std::vector<VkImageView> attachments;
-                attachments.push_back(colorView);
-
-                if (target.HasDepth()) {
-                    // handle if resize
-                    if (target.depthTexture->extent.width != target.GetExtent().width
-                        || target.depthTexture->extent.height != target.GetExtent().height)
-                        delete target.depthTexture;
-                        target.depthTexture = new DepthBuffer(&device, target.GetExtent(), &commandPool);
-
-
-                    attachments.push_back(target.depthTexture->depthImageView);
-                }
-
-                VkFramebufferCreateInfo fbInfo{};
-                fbInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-                fbInfo.renderPass = renderPass;
-                fbInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
-                fbInfo.pAttachments = attachments.data();
-                fbInfo.width = extent.width;
-                fbInfo.height = extent.height;
-                fbInfo.layers = 1;
-
-                VkFramebuffer framebuffer{};
-                if (vkCreateFramebuffer(device.getLogicalDevice(), &fbInfo, nullptr, &framebuffer) != VK_SUCCESS)
-                    throw std::runtime_error("Failed to create framebuffer for swapchain image!");
-
-                framebuffers.push_back(framebuffer);
-            }
-        }
-        else {
-            throw std::runtime_error("RenderTarget is invalid, cannot create framebuffer!");
         }
 
         return framebuffers;
@@ -182,7 +148,7 @@ namespace Simple3D {
                     continue;
                 }
 
-                pass.BoundResources[inputName] = res.target->texture->getBinding()->descriptorSet;
+                //pass.BoundResources[inputName] = res.target->texture->getBinding()->descriptorSet;
             }
 
             
@@ -217,22 +183,30 @@ namespace Simple3D {
         if (!target.IsValid())
             throw std::runtime_error("RenderPass::GenerateRenderPass() -> Invalid RenderTarget!");
 
-
         SetUpPass();
 
         bool hasDepth = target.HasDepth();
+        uint32_t colorCount = target.GetColorAttachmentCount();
 
-        // --- Build attachments using helper methods ---
         std::vector<VkAttachmentDescription> attachments;
-        attachments.push_back(target.GetColorAttachmentDescription(
-             target.IsSwapchain() ? VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
-            : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
-        ));
+        std::vector<VkAttachmentReference> colorRefs;
 
-        VkAttachmentReference colorRef{};
-        colorRef.attachment = 0;
-        colorRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        // --- 1. Build Color Attachments ---
+        for (uint32_t i = 0; i < colorCount; ++i) {
+            // Determine the final layout: swapchain needs PRESENT, G-Buffers need SHADER_READ
+            VkImageLayout finalLayout = target.IsSwapchain()
+                ? VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
+                : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
+            attachments.push_back(target.GetColorAttachmentDescription(i, finalLayout));
+
+            VkAttachmentReference ref{};
+            ref.attachment = i; // Index in the 'attachments' vector
+            ref.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+            colorRefs.push_back(ref);
+        }
+
+        // --- 2. Build Depth Attachment ---
         VkAttachmentReference depthRef{};
         if (hasDepth) {
             attachments.push_back(target.GetDepthAttachmentDescription());
@@ -240,37 +214,33 @@ namespace Simple3D {
             depthRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
         }
 
-        // --- Subpass ---
+        // --- 3. Subpass ---
         VkSubpassDescription subpass{};
         subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-        subpass.colorAttachmentCount = 1;
-        subpass.pColorAttachments = &colorRef;
+        subpass.colorAttachmentCount = static_cast<uint32_t>(colorRefs.size());
+        subpass.pColorAttachments = colorRefs.data(); // Points to the array of refs
         subpass.pDepthStencilAttachment = hasDepth ? &depthRef : nullptr;
 
-        // --- Subpass Dependencies (handle layout transitions & sync) ---
+        // --- 4. Subpass Dependencies ---
+        // Note: srcAccessMask 0 and dstAccessMask COLOR_WRITE is standard for starting a pass
         std::array<VkSubpassDependency, 2> dependencies{};
 
-        // External -> Subpass
         dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
         dependencies[0].dstSubpass = 0;
-        dependencies[0].srcStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
-        dependencies[0].dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-        dependencies[0].srcAccessMask = VK_ACCESS_MEMORY_READ_BIT;
-        dependencies[0].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-        dependencies[0].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+        dependencies[0].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+        dependencies[0].dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+        dependencies[0].srcAccessMask = 0;
+        dependencies[0].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 
-        // Subpass -> External
         dependencies[1].srcSubpass = 0;
         dependencies[1].dstSubpass = VK_SUBPASS_EXTERNAL;
-        dependencies[1].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-        dependencies[1].dstStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
-        dependencies[1].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-        dependencies[1].dstAccessMask = VK_ACCESS_MEMORY_READ_BIT;
-        dependencies[1].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+        dependencies[1].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+        dependencies[1].dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        dependencies[1].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+        dependencies[1].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
 
-        // --- Create the Render Pass ---
-        VkRenderPassCreateInfo renderPassInfo{};
-        renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+        // --- 5. Create the Render Pass ---
+        VkRenderPassCreateInfo renderPassInfo{ VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO };
         renderPassInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
         renderPassInfo.pAttachments = attachments.data();
         renderPassInfo.subpassCount = 1;
@@ -281,16 +251,8 @@ namespace Simple3D {
         if (vkCreateRenderPass(device->getLogicalDevice(), &renderPassInfo, nullptr, &renderPass) != VK_SUCCESS)
             throw std::runtime_error("RenderPass::GenerateRenderPass() -> Failed to create VkRenderPass!");
 
-        // Assign debug name
-        SetObjectName(
-            device->getLogicalDevice(),
-            reinterpret_cast<uint64_t>(renderPass),
-            VK_OBJECT_TYPE_RENDER_PASS,
-            name
-        );
+        SetObjectName(device->getLogicalDevice(), reinterpret_cast<uint64_t>(renderPass), VK_OBJECT_TYPE_RENDER_PASS, name);
     }
-
-
 
     void RenderPass::CreatePipelines(std::vector<ShaderSet*> shaders) {
         if (renderPass == VK_NULL_HANDLE) return;

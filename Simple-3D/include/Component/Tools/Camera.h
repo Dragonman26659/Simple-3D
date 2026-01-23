@@ -11,56 +11,48 @@ Needs to have an orthographic and perspective mode so that i can do both 2D and 
 namespace Simple3D {
     class Camera {
     public:
-        Camera(float fovDegrees = 45.0f, float nearPlane = 0.1f, float farPlane = 100.0f)
-            : position(0.0f),
-            pitch(0.0f), yaw(0.0f), roll(0.0f),
-            perspectiveMode(true),
-            fov(fovDegrees),
-            nearPlane(nearPlane),
-            farPlane(farPlane),
-            orthoWidth(5.0f),
-            orthoHeight(5.0f) {}
+        Camera(
+            float fovDegrees = 45.0f,
+            float nearPlane = 0.1f,
+            float farPlane = 100.0f
+        );
 
-
+        // --- Position ---
         void setPosition(const glm::vec3& pos);
-        //void setPosition(const glm::vec<3, float, (glm::qualifier)0>& pos);
+        const glm::vec3& getPosition() const;
 
-        void setRotation(float pitchDegrees, float yawDegrees, float rollDegrees);
+        // --- Rotation ---
+        void setRotationEuler(float pitchDeg, float yawDeg, float rollDeg = 0.0f);
+        void setRotationQuat(const glm::quat& q);
 
+        glm::vec3 getRotationEuler() const;
+        const glm::quat& getRotationQuat() const;
+
+        // --- Projection ---
         void toggleProjectionMode();
-
-
-        
-
-        glm::mat4 getViewMatrix() const;
-        //glm::mat<4, 4, float, (glm::qualifier)0> getViewMatrix();
-
-        /// <summary>
-        /// Generates and returns Projection matrix
-        /// </summary>
-        /// <param name="viewportWidth">Width of current viewport</param>
-        /// <param name="viewportHeight">HEight of current viewport</param>
-        /// <returns> Projection Matrix</returns>
-        const glm::mat4 getProjectionMatrix(float viewportWidth, float viewportHeight) const;
-        //const glm::mat<4, 4, float, (glm::qualifier)0> getProjectionMatrix(float viewportWidth, float viewportHeight);
-
-        // Getters for camera properties
-        const glm::vec3 getPosition() const { return position; }
-        const glm::vec3 getRotation() const { return glm::vec3(pitch, yaw, roll); }
         bool isPerspectiveMode() const { return perspectiveMode; }
 
-        // Make camera look at coordinate
-        void lookAt(const glm::vec3& target);
+        glm::mat4 getViewMatrix() const;
+        glm::mat4 getProjectionMatrix(float viewportWidth, float viewportHeight) const;
 
+        // --- Orientation vectors ---
         glm::vec3 getForward() const;
         glm::vec3 getRight() const;
         glm::vec3 getUp() const;
 
-        glm::vec3 position;
-        float pitch, yaw, roll;  // Euler angles in degrees
-        bool perspectiveMode;
-        float fov;              // Field of View in degrees
+        // --- LookAt ---
+        void lookAt(const glm::vec3& target);
+
+
+        bool perspectiveMode = true;
+
+        float fov;
         float nearPlane, farPlane;
-        float orthoWidth, orthoHeight;
+        float orthoWidth = 5.0f;
+        float orthoHeight = 5.0f;
+
+    private:
+        glm::vec3 position{ 0.0f };
+        glm::quat rotation{ 1, 0, 0, 0 }; // identity
     };
 }

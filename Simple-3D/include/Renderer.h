@@ -192,6 +192,7 @@ namespace Simple3D {
 
 		// Dosent expose vulkan directly but alows for renderTargets to be made
 		SwapChain* GetSwapChain() { return swapChain; }
+		Device* GetDevice() { return RenderDevice; }
 
 		RenderTexture* CreateRenderTexture(int width, int height);
 		DepthBuffer* CreateDepth(RenderTarget target);
@@ -343,6 +344,11 @@ namespace Simple3D {
 
 		bool usingImgui = false;
 
+	private:
+		// DescriptorPool for Imgui
+		VkDescriptorPool imguiPool;
+	public:
+
 #endif // USEIMGUI
 
 	private:
@@ -365,14 +371,14 @@ namespace Simple3D {
 		std::vector<VkSemaphore> renderFinishedSemaphores;
 		std::vector<VkFence> inFlightFences;
 
-		// Render pass
+		// Render passes
 		VkRenderPass renderPass;
 		VkRenderPass ClearRenderPass;
 
 		// Framebuffer
 		std::vector<VkFramebuffer> swapChainFramebuffers;
 
-		// Device, swapchain and pipeline (ik useful comment)
+		// Device and swapchain(ik useful comment)
 		Device* RenderDevice;
 		SwapChain* swapChain;
 
@@ -390,11 +396,6 @@ namespace Simple3D {
 		std::vector<RenderGraph*> RenderGraphs;
 		std::vector<RenderTexture*> RenderTextures;
 		std::vector<ShaderSet*> shaders;
-
-#ifdef USEIMGUI
-		// DescriptorPool for Imgui
-		VkDescriptorPool imguiPool;
-#endif //USEIMGUI
 
 		// Create instance
 		void CreateInstance(std::string EngineName, std::string ApplicationName);

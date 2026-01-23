@@ -2,73 +2,127 @@
 
 
 namespace Simple3D {
-    // --- Position ---
-    void Camera::setPosition(const glm::vec3& pos) {
+    Camera::Camera(float fovDegrees, float nearPlane, float farPlane) {
+        fov = fovDegrees;
+        this->nearPlane = nearPlane;
+        this->farPlane = farPlane;
+    }
+
+
+    // ------------------------------------------------------------
+    // Position
+    // ------------------------------------------------------------
+
+    void Camera::setPosition(const glm::vec3& pos)
+    {
         position = pos;
     }
 
-    // --- Rotation ---
-    void Camera::setRotation(float pitchDegrees, float yawDegrees, float rollDegrees) {
-        pitch = pitchDegrees;
-        yaw = yawDegrees;
-        roll = rollDegrees;
+    const glm::vec3& Camera::getPosition() const
+    {
+        return position;
     }
 
-    // --- Projection Mode ---
-    void Camera::toggleProjectionMode() {
-        perspectiveMode = !perspectiveMode;
+    // ------------------------------------------------------------
+   // Rotation
+   // ------------------------------------------------------------
+
+    void Camera::setRotationEuler(float pitchDeg, float yawDeg, float rollDeg)
+    {
+        glm::vec3 radians = glm::radians(glm::vec3(pitchDeg, yawDeg, rollDeg));
+        rotation = glm::quat(radians);
     }
 
-    // --- View Matrix ---
-    glm::mat4 Camera::getViewMatrix() const {
-        return glm::lookAt(position, position + getForward(), getUp());
+    void Camera::setRotationQuat(const glm::quat& q)
+    {
+        rotation = glm::normalize(q);
     }
 
-    // --- Projection Matrix ---
-    const glm::mat4 Camera::getProjectionMatrix(float viewportWidth, float viewportHeight) const {
-        if (perspectiveMode) {
+    glm::vec3 Camera::getRotationEuler() const
+    {
+        return glm::degrees(glm::eulerAngles(rotation));
+    }
+
+    const glm::quat& Camera::getRotationQuat() const
+    {
+        return rotation;
+    }
+
+    // ------------------------------------------------------------
+   // View / Projection
+   // ------------------------------------------------------------
+
+    glm::mat4 Camera::getViewMatrix() const
+    {
+        // View = inverse(Translation * Rotation)
+        glm::mat4 world =
+            glm::translate(glm::mat4(1.0f), position) *
+            glm::mat4(rotation);
+
+        return glm::inverse(world);
+    }
+
+    glm::mat4 Camera::getProjectionMatrix(float viewportWidth, float viewportHeight) const
+    {
+        float aspect = viewportWidth / viewportHeight;
+
+        if (perspectiveMode)
+        {
             return glm::perspective(
                 glm::radians(fov),
-                viewportWidth / viewportHeight,
-                nearPlane, farPlane
+                aspect,
+                nearPlane,
+                farPlane
             );
         }
-        else {
+        else
+        {
             return glm::ortho(
-                -orthoWidth / 2.0f, orthoWidth / 2.0f,
-                -orthoHeight / 2.0f, orthoHeight / 2.0f,
-                nearPlane, farPlane
+                -orthoWidth * 0.5f,
+                orthoWidth * 0.5f,
+                -orthoHeight * 0.5f,
+                orthoHeight * 0.5f,
+                nearPlane,
+                farPlane
             );
         }
     }
 
-    // --- Look At Target ---
-    void Camera::lookAt(const glm::vec3& target) {
-        glm::vec3 dir = glm::normalize(target - position);
+    // ------------------------------------------------------------
+   // Orientation vectors
+   // ------------------------------------------------------------
 
-        float pitchRad = glm::asin(glm::clamp(dir.y, -1.0f, 1.0f));
-        float yawRad = glm::atan(dir.x, -dir.z); // matches -Z forward
-
-        setRotation(
-            glm::degrees(pitchRad),
-            glm::degrees(yawRad),
-            0.0f
-        );
+    glm::vec3 Camera::getForward() const
+    {
+        return glm::normalize(rotation * glm::vec3(0, 0, -1));
     }
 
-    glm::vec3 Camera::getForward() const {
-        glm::vec3 forward;
-        forward.x = cos(glm::radians(pitch)) * sin(glm::radians(yaw));
-        forward.y = sin(glm::radians(pitch));
-        forward.z = -cos(glm::radians(pitch)) * cos(glm::radians(yaw));
-        return glm::normalize(forward);
+    glm::vec3 Camera::getRight() const
+    {
+        return glm::normalize(rotation * glm::vec3(1, 0, 0));
     }
 
-    glm::vec3 Camera::getRight() const {
-        return glm::normalize(glm::cross(glm::vec3(0.0f, 1.0f, 0.0f), getForward()));
+    glm::vec3 Camera::getUp() const
+    {
+        return glm::normalize(rotation * glm::vec3(0, 1, 0));
     }
 
-    glm::vec3 Camera::getUp() const {
-        return glm::normalize(glm::cross(getForward(), getRight()));
+    // ------------------------------------------------------------
+    // LookAt
+    // ------------------------------------------------------------
+
+    void Camera::lookAt(const glm::vec3& target)
+    {
+        glm::vec3 forward = glm::normalize(target - position);
+        rotation = glm::quatLookAtRH(forward, glm::vec3(0, 1, 0));
+    }
+
+    // ------------------------------------------------------------
+    // Projection toggle
+    // ------------------------------------------------------------
+
+    void Camera::toggleProjectionMode()
+    {
+        perspectiveMode = !perspectiveMode;
     }
 }

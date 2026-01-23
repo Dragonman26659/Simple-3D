@@ -59,7 +59,7 @@ namespace Simple3D {
         r_device = nullptr;
         r_commandPool = nullptr;
         BufferEnabled = false;
-    }
+     }
 
     void Model::CreateVertexBuffer() {
         VkDeviceSize bufferSize = sizeof(Verticies[0]) * Verticies.size();

@@ -84,7 +84,7 @@ public:
             float pitch = mouseDelta.y * sensitivity * dt;
 
             // Get current rotation
-            glm::vec3 rot = camera.getRotation();
+            glm::vec3 rot = camera.getRotationEuler();
             rot.y += yaw;
             rot.x += pitch;
 
@@ -92,7 +92,7 @@ public:
             rot.x = glm::clamp(rot.x, -89.0f, 89.0f);
 
             // Update rotation
-            camera.setRotation(rot.x, rot.y, 0.0f);
+            camera.setRotationEuler(rot.x, rot.y, 0.0f);
         }
 
         if (event.type == SDL_MOUSEBUTTONDOWN && event.button.button == SDL_BUTTON_RIGHT) {
@@ -401,7 +401,9 @@ int main() {
 
     // Set camera position
     mainCam->setPosition(glm::vec3(0.0f, 0.5f, 2.0f));
-    mainCam->perspectiveMode = true;
+    if (!mainCam->isPerspectiveMode())
+        mainCam->toggleProjectionMode();
+
     mainCam->lookAt(glm::vec3(0.0f));
 
 
@@ -423,7 +425,7 @@ int main() {
     
     Simple3D::RenderGraph* imguiGraph = renderer->CreateRenderGraph("Main");
     Simple3D::RenderTarget imguiTarget = Simple3D::RenderTarget();
-    imguiTarget.texture = ImguiTexture;
+    imguiTarget.AddTexture(ImguiTexture);
     imguiTarget.depthTexture = renderer->CreateDepth(imguiTarget);
 
     imguiGraph->AddResource("ImguiTexture", &imguiTarget);
