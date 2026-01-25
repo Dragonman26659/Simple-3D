@@ -131,19 +131,31 @@ namespace Simple3D {
         constexpr uint32_t MATERIAL_SET = 1;
 
         const auto& setLayouts = shaders->GetDescriptorSetLayouts();
+        const auto& descriptorMap = shaders->GetDescriptorMap();
 
-        if (MATERIAL_SET >= setLayouts.size()) {
+        VkDescriptorSetLayout foundLayout = VK_NULL_HANDLE;
+        uint32_t current_map_index = 0;
+
+        for (const auto& [set_index_in_map, bindings] : descriptorMap) {
+            if (set_index_in_map == MATERIAL_SET) {
+                if (current_map_index < setLayouts.size()) {
+                    foundLayout = setLayouts[current_map_index];
+                }
+                break;
+            }
+            current_map_index++;
+        }
+
+        if (foundLayout == VK_NULL_HANDLE) {
             DescritorsNeeded = false;
             return;
         }
 
-        descriptorSetLayout = setLayouts[MATERIAL_SET];
+        descriptorSetLayout = foundLayout;
         descriptorSets.resize(MAX_FRAMES_IN_FLIGHT);
 
-        // ---- Build descriptor pool from reflected bindings ----
         std::unordered_map<VkDescriptorType, uint32_t> typeCounts;
 
-        const auto& descriptorMap = shaders->GetDescriptorMap();
         auto it = descriptorMap.find(MATERIAL_SET);
         if (it == descriptorMap.end()) {
             throw std::runtime_error("Material set missing in descriptor map");
@@ -163,29 +175,23 @@ namespace Simple3D {
         poolInfo.pPoolSizes = poolSizes.data();
         poolInfo.maxSets = MAX_FRAMES_IN_FLIGHT;
 
-        vkCreateDescriptorPool(
-            r_device->getLogicalDevice(),
-            &poolInfo,
-            nullptr,
-            &descriptorPool
-        );
+        if (vkCreateDescriptorPool(r_device->getLogicalDevice(), &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to create descriptor pool");
+        }
 
-        std::vector<VkDescriptorSetLayout> layouts(
-            MAX_FRAMES_IN_FLIGHT, descriptorSetLayout
-        );
+        std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, descriptorSetLayout);
 
         VkDescriptorSetAllocateInfo alloc{ VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
         alloc.descriptorPool = descriptorPool;
         alloc.descriptorSetCount = MAX_FRAMES_IN_FLIGHT;
         alloc.pSetLayouts = layouts.data();
 
-        vkAllocateDescriptorSets(
-            r_device->getLogicalDevice(),
-            &alloc,
-            descriptorSets.data()
-        );
+        if (vkAllocateDescriptorSets(r_device->getLogicalDevice(), &alloc, descriptorSets.data()) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to allocate descriptor sets");
+        }
 
         CreatedDescriptors = true;
+        DescritorsNeeded = true;
     }
 
     void Material::UpdateDescriptors(uint32_t frameIndex)

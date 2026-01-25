@@ -262,13 +262,24 @@ namespace Simple3D {
 	void Renderer::BuildRenderGraphs() {
 		// Make sure all shaders have been reflected
 		for (ShaderSet* set : shaders) {
-			set->Reflect();
+			if (!set->reflected)
+				set->Reflect();
 		}
 
 		// Build rendergraphs
 		for (RenderGraph* graph : RenderGraphs) {
 			graph->Generate(*RenderDevice, shaders);
 		}
+	}
+
+	void Renderer::BuildGraph(RenderGraph* graph) {
+		// Make sure all shaders have been reflected
+		for (ShaderSet* set : shaders) {
+			if (!set->reflected)
+				set->Reflect();
+		}
+
+		graph->Generate(*RenderDevice, shaders);
 	}
 
 
@@ -286,6 +297,12 @@ namespace Simple3D {
 		RenderTextures.push_back(texture);
 		return texture;
 	}
+	RenderTexture* Renderer::CreateRenderTexture(int width, int height, VkFormat format) {
+		RenderTexture* texture = new RenderTexture(RenderDevice, width, height, format);
+		RenderTextures.push_back(texture);
+		return texture;
+	}
+
 
 	void Renderer::WindoResize() {
 		RecreateSwapChain();
@@ -306,6 +323,10 @@ namespace Simple3D {
 
 	DepthBuffer* Renderer::CreateDepth(RenderTarget target) {
 		return new DepthBuffer(RenderDevice, target.GetExtent(), &commandPool);
+	}
+
+	DepthBuffer* Renderer::CreateDepth(VkExtent2D extent) {
+		return new DepthBuffer(RenderDevice, extent, &commandPool);
 	}
 
 	//////////////////////////////////////////

@@ -166,7 +166,7 @@ namespace Simple3D {
 
         CreateDescriptorSetLayouts();
 
-
+        reflected = true;
         return true;
     }
 
@@ -175,24 +175,64 @@ namespace Simple3D {
         if (setLayouts.empty())
             CreateDescriptorSetLayouts();
 
-        VkPipelineLayoutCreateInfo info{ VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
-        info.setLayoutCount = static_cast<uint32_t>(setLayouts.size());
-        info.pSetLayouts = setLayouts.data();
-        std::vector<VkPushConstantRange> vkPushConstants;
-        vkPushConstants.reserve(pushConstants.size());
-
-        for (const auto& pc : pushConstants) {
-            VkPushConstantRange vkRange{};
-            vkRange.stageFlags = pc.stageFlags;
-            vkRange.offset = pc.offset;
-            vkRange.size = pc.size;
-            vkPushConstants.push_back(vkRange);
+        const auto& descriptorMap = GetDescriptorMap();
+        uint32_t maxSetIndex = 0;
+        for (const auto& [setIndex, bindings] : descriptorMap) {
+            if (setIndex > maxSetIndex) maxSetIndex = setIndex;
         }
 
+        std::vector<VkDescriptorSetLayout> finalLayouts;
+        VkDescriptorSetLayout emptyLayout = VK_NULL_HANDLE;
+
+        for (uint32_t i = 0; i <= maxSetIndex; ++i) {
+            auto it = descriptorMap.find(i);
+            if (it != descriptorMap.end()) {
+                uint32_t mapIndex = 0;
+                VkDescriptorSetLayout found = VK_NULL_HANDLE;
+                for (const auto& [idx, b] : descriptorMap) {
+                    if (idx == i) {
+                        found = setLayouts[mapIndex];
+                        break;
+                    }
+                    mapIndex++;
+                }
+                finalLayouts.push_back(found);
+            }
+            else {
+                if (emptyLayout == VK_NULL_HANDLE) {
+                    VkDescriptorSetLayoutCreateInfo emptyInfo{ VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
+                    emptyInfo.bindingCount = 0;
+                    emptyInfo.pBindings = nullptr;
+                    if (vkCreateDescriptorSetLayout(device, &emptyInfo, nullptr, &emptyLayout) != VK_SUCCESS) {
+                        throw std::runtime_error("Failed to create temporary empty descriptor set layout");
+                    }
+                }
+                finalLayouts.push_back(emptyLayout);
+            }
+        }
+
+        VkPipelineLayoutCreateInfo info{ VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
+        info.setLayoutCount = static_cast<uint32_t>(finalLayouts.size());
+        info.pSetLayouts = finalLayouts.data();
+
+        std::vector<VkPushConstantRange> vkPushConstants;
+        for (const auto& pc : pushConstants) {
+            vkPushConstants.push_back({ pc.stageFlags, pc.offset, pc.size });
+        }
         info.pushConstantRangeCount = static_cast<uint32_t>(vkPushConstants.size());
         info.pPushConstantRanges = vkPushConstants.empty() ? nullptr : vkPushConstants.data();
 
-        vkCreatePipelineLayout(device, &info, nullptr, &pipelineLayout);
+        VkResult result = vkCreatePipelineLayout(device, &info, nullptr, &pipelineLayout);
+
+
+        if (emptyLayout != VK_NULL_HANDLE) {
+            vkDestroyDescriptorSetLayout(device, emptyLayout, nullptr);
+        }
+
+        if (result != VK_SUCCESS) {
+            throw std::runtime_error("Failed to create pipeline layout");
+        }
+
         return pipelineLayout;
     }
 

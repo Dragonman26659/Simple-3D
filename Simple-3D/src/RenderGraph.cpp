@@ -95,7 +95,9 @@ namespace Simple3D {
                 if (target.depthTexture->extent.width != extent.width ||
                     target.depthTexture->extent.height != extent.height)
                 {
-                    delete target.depthTexture;
+                    if (target.depthTexture)
+                        delete target.depthTexture;
+
                     // Note: Ensure your DepthBuffer constructor and commandPool access are correct for your scope
                     target.depthTexture = new DepthBuffer(&device, extent, &commandPool);
 
@@ -229,7 +231,7 @@ namespace Simple3D {
         dependencies[0].dstSubpass = 0;
         dependencies[0].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
         dependencies[0].dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
-        dependencies[0].srcAccessMask = 0;
+        dependencies[0].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
         dependencies[0].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 
         dependencies[1].srcSubpass = 0;

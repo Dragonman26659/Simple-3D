@@ -67,6 +67,8 @@ namespace Simple3D {
         std::vector<PushConstantRange> pushConstants;
         std::string name;
 
+        bool reflected = false;
+
     private:
         VkDevice device;
         std::vector<ShaderStageInfo> stages;

@@ -140,18 +140,21 @@ namespace Simple3D {
         }
 
         bindInfo.imageView = imgInfo.imageView;
-        bindInfo.sampler = imgInfo.sampler; // sampler may be VK_NULL_HANDLE for SAMPLED_IMAGE
+        bindInfo.sampler = imgInfo.sampler;
+        bindInfo.imageLayout = imgInfo.imageLayout;
     }
 
 
     void Pipeline::UpdateDescriptors(uint32_t frameIndex)
     {
         std::vector<VkWriteDescriptorSet> writes;
-        std::vector<VkDescriptorBufferInfo> bufferInfos;
-        std::vector<VkDescriptorImageInfo> imageInfos;
+        std::vector<VkDescriptorBufferInfo> bufferInfos_persistent;
+        std::vector<VkDescriptorImageInfo> imageInfos_persistent;
+        writes.reserve(bindings.size());
+        bufferInfos_persistent.reserve(bindings.size());
+        imageInfos_persistent.reserve(bindings.size());
 
         for (auto& [name, binding] : bindings) {
-
             assert(frameIndex < descriptorSets.size());
             assert(binding.set < descriptorSets[frameIndex].size());
 
@@ -169,34 +172,37 @@ namespace Simple3D {
                 assert(binding.buffers.size() > frameIndex);
                 assert(binding.buffers[frameIndex] != VK_NULL_HANDLE);
 
-                bufferInfos.push_back({
+                bufferInfos_persistent.push_back({
                     binding.buffers[frameIndex],
                     0,
                     binding.dataSize ? binding.dataSize : VK_WHOLE_SIZE
                     });
 
-                write.pBufferInfo = &bufferInfos.back();
+                write.pBufferInfo = &bufferInfos_persistent.back();
                 writes.push_back(write);
             }
-            //else {
-            //    assert(binding.imageView != VK_NULL_HANDLE);
-            //
-            //    VkDescriptorImageInfo img{};
-            //    img.imageView = binding.imageView;
-            //    img.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-            //
-            //    img.sampler =
-            //        (binding.type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)
-            //        ? binding.sampler
-            //        : VK_NULL_HANDLE;
-            //
-            //    imageInfos.push_back(img);
-            //    write.pImageInfo = &imageInfos.back();
-            //}
+            else {
+                assert(binding.imageView != VK_NULL_HANDLE);
+
+                VkDescriptorImageInfo imgInfoToPush{};
+                imgInfoToPush.imageView = binding.imageView;
+                imgInfoToPush.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+                imgInfoToPush.sampler =
+                    (binding.type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)
+                    ? binding.sampler
+                    : VK_NULL_HANDLE;
+
+                imageInfos_persistent.push_back(imgInfoToPush);
+                write.pImageInfo = &imageInfos_persistent.back();
+                writes.push_back(write);
+            }
         }
 
         vkUpdateDescriptorSets(device->getLogicalDevice(),
-            uint32_t(writes.size()), writes.data(), 0, nullptr);
+            static_cast<uint32_t>(writes.size()),
+            writes.data(),
+            0, nullptr);
     }
 
     void Pipeline::CreateDescriptorSets() {
@@ -423,6 +429,9 @@ namespace Simple3D {
             set = material.descriptorSets[frameIndex];
         else
             return;
+
+        assert(set != VK_NULL_HANDLE && "Material descriptor set handle is NULL!");
+        assert(cmd != VK_NULL_HANDLE && "Command buffer is NULL!");
 
         vkCmdBindDescriptorSets(
             cmd,

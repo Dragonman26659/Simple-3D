@@ -72,6 +72,8 @@ struct Vertex {
     glm::vec3 normal;
     glm::vec2 texCoord;
     glm::vec4 tangent;
+    glm::vec4 BoneWeight;
+    glm::vec4 BoneID;
     int textureID;
 
     static VkVertexInputBindingDescription getBindingDescription() {
@@ -82,8 +84,8 @@ struct Vertex {
         return bindingDescription;
     }
 
-    static std::array<VkVertexInputAttributeDescription, 6> getAttributeDescriptions() {
-        std::array<VkVertexInputAttributeDescription, 6> attributeDescriptions{};
+    static std::array<VkVertexInputAttributeDescription, 8> getAttributeDescriptions() {
+        std::array<VkVertexInputAttributeDescription, 8> attributeDescriptions{};
 
         attributeDescriptions[0].binding = 0;
         attributeDescriptions[0].location = 0;
@@ -109,10 +111,21 @@ struct Vertex {
         attributeDescriptions[4].location = 4;
         attributeDescriptions[4].format = VK_FORMAT_R32G32B32A32_SFLOAT;
         attributeDescriptions[4].offset = offsetof(Vertex, tangent);
+
         attributeDescriptions[5].binding = 0;
         attributeDescriptions[5].location = 5;
-        attributeDescriptions[5].format = VK_FORMAT_R32_SINT;
-        attributeDescriptions[5].offset = offsetof(Vertex, textureID);
+        attributeDescriptions[5].format = VK_FORMAT_R32G32B32A32_SFLOAT;
+        attributeDescriptions[5].offset = offsetof(Vertex, BoneWeight);
+
+        attributeDescriptions[6].binding = 0;
+        attributeDescriptions[6].location = 6;
+        attributeDescriptions[6].format = VK_FORMAT_R32G32B32A32_SFLOAT;
+        attributeDescriptions[6].offset = offsetof(Vertex, BoneID);
+
+        attributeDescriptions[7].binding = 0;
+        attributeDescriptions[7].location = 7;
+        attributeDescriptions[7].format = VK_FORMAT_R32_SINT;
+        attributeDescriptions[7].offset = offsetof(Vertex, textureID);
 
         return attributeDescriptions;
     }
@@ -123,6 +136,8 @@ struct Vertex {
             normal == other.normal &&
             texCoord == other.texCoord &&
             tangent == other.tangent &&
+            BoneWeight == other.BoneWeight &&
+            BoneID == other.BoneID &&
             textureID == other.textureID;
     }
 };
@@ -134,8 +149,10 @@ namespace std {
             size_t h2 = hash<glm::vec3>()(vertex.normal);
             size_t h3 = hash<glm::vec2>()(vertex.texCoord);
             size_t h4 = hash<glm::vec4>()(vertex.tangent);
-            size_t h5 = hash<int>()(vertex.textureID);
-            return (((((h1 ^ (h2 << 1)) >> 1) ^ (h3 << 1)) ^ (h4 << 1)) ^ (h5 << 1));
+            size_t h5 = hash<glm::vec4>()(vertex.BoneWeight);
+            size_t h6 = hash<glm::vec4>()(vertex.BoneID);
+            size_t h7 = hash<int>()(vertex.textureID);
+            return (((((h1 ^ (h2 << 1)) >> 1) ^ (h3 << 1)) ^ (h4 << 1)) ^ (h5 << 1) ^ (h6 << 1) ^ (h7 << 1));
         }
     };
 }

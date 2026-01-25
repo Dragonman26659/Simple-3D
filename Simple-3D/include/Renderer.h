@@ -186,6 +186,7 @@ namespace Simple3D {
 
 		RenderGraph* CreateRenderGraph(std::string name);
 		void BuildRenderGraphs();
+		void BuildGraph(RenderGraph* graph);
 
 		TextureBinding CreateTexture(std::string filepath);
 		TextureCube CreateTextureCube(std::vector<std::string> filepath);
@@ -195,7 +196,9 @@ namespace Simple3D {
 		Device* GetDevice() { return RenderDevice; }
 
 		RenderTexture* CreateRenderTexture(int width, int height);
+		RenderTexture* CreateRenderTexture(int width, int height, VkFormat format);
 		DepthBuffer* CreateDepth(RenderTarget target);
+		DepthBuffer* CreateDepth(VkExtent2D extent);
 
 
 		bool VALIDATION_LAYERS_ENABLED = true;
