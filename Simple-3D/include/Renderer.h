@@ -189,7 +189,7 @@ namespace Simple3D {
 		void BuildGraph(RenderGraph* graph);
 
 		TextureBinding CreateTexture(std::string filepath);
-		TextureCube CreateTextureCube(std::vector<std::string> filepath);
+		TextureCube* CreateTextureCube(std::vector<std::string> filepath);
 
 		// Dosent expose vulkan directly but alows for renderTargets to be made
 		SwapChain* GetSwapChain() { return swapChain; }

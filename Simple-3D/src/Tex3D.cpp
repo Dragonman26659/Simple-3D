@@ -61,7 +61,6 @@ namespace Simple3D {
         std::vector<unsigned char*>& pixels)
     {
         int w, h, comp;
-
         for (const auto& path : faces) {
             unsigned char* data = stbi_load(path.c_str(), &w, &h, &comp, 4);
             if (!data)

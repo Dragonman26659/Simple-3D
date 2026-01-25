@@ -317,8 +317,8 @@ namespace Simple3D {
 		return CreateTextureBinding(filepath, RenderDevice, &commandPool);
 	}
 
-	TextureCube Renderer::CreateTextureCube(std::vector<std::string> filepath) {
-		return TextureCube(*RenderDevice, filepath, true, &commandPool);
+	TextureCube* Renderer::CreateTextureCube(std::vector<std::string> filepath) {
+		return new TextureCube(*RenderDevice, filepath, true, &commandPool);
 	}
 
 	DepthBuffer* Renderer::CreateDepth(RenderTarget target) {

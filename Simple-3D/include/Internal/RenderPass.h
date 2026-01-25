@@ -74,9 +74,12 @@ namespace Simple3D {
 
 	class RenderPass {
 	public:
+		RenderPass() {}
+
 		PassType type = None;
 		std::string name;
 		RenderInfo renderInfo;
+		VkCommandPool CommandPool;
 
 		// Resources this pass depends on
 		std::vector<std::string> inputResources;

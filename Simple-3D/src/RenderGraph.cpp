@@ -131,6 +131,7 @@ namespace Simple3D {
         for (auto& passPtr : passes)
         {
             auto& pass = *passPtr;
+            pass.commandPool = &commandPool;
             RenderInfo& info = pass.renderInfo;
 
 
