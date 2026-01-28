@@ -194,6 +194,7 @@ namespace Simple3D {
 		// Dosent expose vulkan directly but alows for renderTargets to be made
 		SwapChain* GetSwapChain() { return swapChain; }
 		Device* GetDevice() { return RenderDevice; }
+		VkCommandPool* GetCommandPool() { return &commandPool; }
 
 		RenderTexture* CreateRenderTexture(int width, int height);
 		RenderTexture* CreateRenderTexture(int width, int height, VkFormat format);
@@ -407,7 +408,7 @@ namespace Simple3D {
 		void createCommandBuffer();
 
 		// Command buffer recording -- In header due to references to preprossessor
-		void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex, RenderData& data);
+		void recordCommandBuffer(VkCommandBuffer cmd, uint32_t syncIndex, uint32_t imageIndex, RenderData& data);
 
 		// Sync objects
 		void createSyncObjects();

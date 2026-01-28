@@ -7,9 +7,9 @@ namespace Simple3D {
     RenderGraph::RenderGraph(std::string name, VkCommandPool& commandPool, Device& device) : name(name), commandPool(commandPool) {
     }
 
-    void RenderGraph::Execute(VkCommandBuffer cmd, RenderData data, uint32_t currentFrame) {
+    void RenderGraph::Execute(VkCommandBuffer cmd, RenderData data, uint32_t currentFrame, uint32_t syncIndex) {
         for (auto* pass : executionOrder) {
-            pass->Execute(cmd, data, currentFrame);
+            pass->Execute(cmd, data, currentFrame, syncIndex);
         }
     }
 

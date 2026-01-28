@@ -51,7 +51,7 @@ namespace Simple3D {
         PassConfig.subpass = 0;
     }
 
-    void ForwardPass::Execute(VkCommandBuffer cmd, const RenderData& data, uint32_t imageIndex) {
+    void ForwardPass::Execute(VkCommandBuffer cmd, const RenderData& data, uint32_t imageIndex, uint32_t syncIndex) {
         if (!renderInfo.target.IsValid()) {
             throw std::runtime_error("Invalid render target in GeometryPass!");
         }
@@ -124,7 +124,7 @@ namespace Simple3D {
             // Update per-frame (camera + lights)
             pipeline->BindData("lightBuffer", data.lights.data(), sizeof(Light) * data.lights.size());
 
-            pipeline->UpdateDescriptors(imageIndex);
+            pipeline->UpdateDescriptors(syncIndex);
 
             vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->GetPipeline());
 
@@ -154,7 +154,7 @@ namespace Simple3D {
                 // --- Bind material textures
                 pipeline->BindMaterial(cmd, *model->material, imageIndex);
 
-                pipeline->UpdateDescriptors(imageIndex);
+                pipeline->UpdateDescriptors(syncIndex);
 
                 // --- Bind vertex/index buffers and draw
                 VkBuffer vertexBuffers[] = { model->GetVertexBuffer() };

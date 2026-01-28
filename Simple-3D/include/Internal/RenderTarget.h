@@ -13,14 +13,15 @@ namespace Simple3D {
         std::vector<RenderTexture*> colorAttachments;
         DepthBuffer* depthTexture = nullptr;
 
+        // Shadowmapping Support
+        bool isShadowArray = false;
+        uint32_t layerCount = 1;
+
+        // --- Identification ---
         bool IsSwapchain() const { return swapchain != nullptr; }
         bool IsTexture()   const { return !colorAttachments.empty(); }
-
-        bool IsValid() const {
-            // Valid if it's either a swapchain OR has at least one color texture
-            return (swapchain != nullptr) ^ (!colorAttachments.empty());
-        }
-
+        bool HasDepth()    const { return depthTexture != nullptr; }
+        bool IsValid()     const { return (swapchain != nullptr) != (!colorAttachments.empty() || depthTexture != nullptr); }
 
         void AddTexture(RenderTexture* tex) {
             colorAttachments.push_back(tex);
@@ -31,11 +32,26 @@ namespace Simple3D {
             return colorAttachments[index];
         }
 
-        uint32_t GetColorAttachmentCount() const {
-            if (IsSwapchain()) return 1;
-            return static_cast<uint32_t>(colorAttachments.size());
+        // --- Factories ---
+        static RenderTarget CreateShadowTarget(DepthBuffer* shadowDepth, uint32_t layers = 1) {
+            RenderTarget target{};
+            target.depthTexture = shadowDepth;
+            target.isShadowArray = (layers > 1);
+            target.layerCount = layers;
+            return target;
         }
 
+        // --- Getters ---
+        VkExtent2D GetExtent() const {
+            if (IsSwapchain()) return swapchain->GetSwapChainExtent();
+            if (IsTexture())   return colorAttachments[0]->getExtent();
+            if (HasDepth())    return depthTexture->extent; // Critical for shadow-only targets
+            return { 0, 0 };
+        }
+
+        uint32_t GetColorAttachmentCount() const {
+            return IsSwapchain() ? 1 : static_cast<uint32_t>(colorAttachments.size());
+        }
 
         VkFormat GetFormat(uint32_t index = 0) const {
             if (IsSwapchain()) return swapchain->GetSwapChainImageFormat();
@@ -43,37 +59,36 @@ namespace Simple3D {
             return VK_FORMAT_UNDEFINED;
         }
 
-        VkExtent2D GetExtent() const {
-            if (IsSwapchain()) return swapchain->GetSwapChainExtent();
-            if (!colorAttachments.empty()) return colorAttachments[0]->getExtent();
-            return { 0, 0 };
+        VkFormat    GetDepthFormat()    const { return depthTexture ? depthTexture->depthFormat : VK_FORMAT_UNDEFINED; }
+        VkImageView GetDepthImageView() const { return depthTexture ? depthTexture->depthImageView : VK_NULL_HANDLE; }
+
+        VkImageViewType GetDepthViewType() const {
+            return isShadowArray ? VK_IMAGE_VIEW_TYPE_2D_ARRAY : VK_IMAGE_VIEW_TYPE_2D;
         }
 
+        // --- View Collection ---
         std::vector<VkImageView> GetAttachmentViews(uint32_t currentFrame = 0) const {
             std::vector<VkImageView> views;
             if (IsSwapchain()) {
                 views.push_back(swapchain->getImageViews()[currentFrame]);
             }
             else {
-                for (auto* tex : colorAttachments) {
-                    views.push_back(tex->GetImageView());
-                }
+                for (auto* tex : colorAttachments) views.push_back(tex->GetImageView());
             }
             if (HasDepth()) views.push_back(GetDepthImageView());
             return views;
         }
 
-        VkAttachmentDescription GetColorAttachmentDescription(
-            uint32_t index,
+        // --- Attachment Descriptions ---
+        VkAttachmentDescription GetColorAttachmentDescription(uint32_t index,
             VkImageLayout finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-            VkAttachmentLoadOp loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
-            VkAttachmentStoreOp storeOp = VK_ATTACHMENT_STORE_OP_STORE) const
+            VkAttachmentLoadOp loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR) const
         {
             VkAttachmentDescription desc{};
             desc.format = GetFormat(index);
             desc.samples = VK_SAMPLE_COUNT_1_BIT;
             desc.loadOp = loadOp;
-            desc.storeOp = storeOp;
+            desc.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
             desc.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
             desc.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
             desc.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
@@ -81,83 +96,73 @@ namespace Simple3D {
             return desc;
         }
 
-        void TransitionForRead(VkCommandBuffer cmdBuf, uint32_t currentFrame) const {
-            for (uint32_t i = 0; i < GetColorAttachmentCount(); ++i) {
-                VkImage image = IsSwapchain() ? swapchain->getImages()[currentFrame] : colorAttachments[i]->GetImage();
+        VkAttachmentDescription GetDepthAttachmentDescription(
+            VkImageLayout finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
+            VkAttachmentLoadOp loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR) const
+        {
+            VkAttachmentDescription desc{};
+            if (!HasDepth()) return desc;
+            desc.format = GetDepthFormat();
+            desc.samples = VK_SAMPLE_COUNT_1_BIT;
+            desc.loadOp = loadOp;
+            desc.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+            desc.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+            desc.finalLayout = finalLayout;
+            return desc;
+        }
 
-                VkImageMemoryBarrier barrier{ VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
-                barrier.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-                barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-                barrier.image = image;
-                barrier.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
-                barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-                barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-
-                vkCmdPipelineBarrier(cmdBuf, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-                    VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
+        // --- Transitions ---
+        void TransitionForRead(VkCommandBuffer cmd, uint32_t frameIndex) const {
+            // Color Transitions
+            uint32_t count = GetColorAttachmentCount();
+            for (uint32_t i = 0; i < count; ++i) {
+                VkImage img = IsSwapchain() ? swapchain->getImages()[frameIndex] : colorAttachments[i]->GetImage();
+                TransitionImage(cmd, img, VK_IMAGE_ASPECT_COLOR_BIT,
+                    VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                    VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+                    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 1);
             }
-
+            // Depth/Shadow Transition
             if (HasDepth()) {
-                VkImageMemoryBarrier barrier{ VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
-                barrier.oldLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-                barrier.newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
-                barrier.image = depthTexture->depthImage;
-                barrier.subresourceRange = { VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1 };
-                barrier.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-                barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-
-                vkCmdPipelineBarrier(cmdBuf, VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
-                    VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
+                TransitionImage(cmd, depthTexture->depthImage, VK_IMAGE_ASPECT_DEPTH_BIT,
+                    VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
+                    VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+                    VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, layerCount);
             }
         }
 
-        void TransitionForWrite(VkCommandBuffer cmdBuf, uint32_t currentFrame) const {
-            for (uint32_t i = 0; i < GetColorAttachmentCount(); ++i) {
-                VkImage image = IsSwapchain() ? swapchain->getImages()[currentFrame] : colorAttachments[i]->GetImage();
-
-                VkImageMemoryBarrier barrier{ VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
-                barrier.oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-                barrier.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-                barrier.image = image;
-                barrier.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
-                barrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
-                barrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-
-                vkCmdPipelineBarrier(cmdBuf, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-                    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
+        void TransitionForWrite(VkCommandBuffer cmd, uint32_t frameIndex) const {
+            // Color Transitions
+            uint32_t count = GetColorAttachmentCount();
+            for (uint32_t i = 0; i < count; ++i) {
+                VkImage img = IsSwapchain() ? swapchain->getImages()[frameIndex] : colorAttachments[i]->GetImage();
+                TransitionImage(cmd, img, VK_IMAGE_ASPECT_COLOR_BIT,
+                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                    VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+                    VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 1);
             }
-
+            // Depth/Shadow Transition
             if (HasDepth()) {
-                VkImageMemoryBarrier barrier{ VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
-                barrier.oldLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
-                barrier.newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-                barrier.image = depthTexture->depthImage;
-                barrier.subresourceRange = { VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1 };
-                barrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
-                barrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-
-                vkCmdPipelineBarrier(cmdBuf, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-                    VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
+                TransitionImage(cmd, depthTexture->depthImage, VK_IMAGE_ASPECT_DEPTH_BIT,
+                    VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+                    VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+                    VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT, layerCount);
             }
         }
 
-        VkAttachmentDescription GetDepthAttachmentDescription() const {
-            VkAttachmentDescription depthAttachment{};
-            if (!HasDepth()) return depthAttachment;
-
-            depthAttachment.format = GetDepthFormat();
-            depthAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
-            depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-            depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-            depthAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-            depthAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-            depthAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-            depthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
-            return depthAttachment;
+        void TransitionImage(VkCommandBuffer cmd, VkImage image, VkImageAspectFlags aspect,
+            VkImageLayout oldLayout, VkImageLayout newLayout,
+            VkAccessFlags srcAccess, VkAccessFlags dstAccess,
+            VkPipelineStageFlags srcStage, VkPipelineStageFlags dstStage, uint32_t layers) const
+        {
+            VkImageMemoryBarrier barrier{ VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
+            barrier.oldLayout = oldLayout;
+            barrier.newLayout = newLayout;
+            barrier.srcAccessMask = srcAccess;
+            barrier.dstAccessMask = dstAccess;
+            barrier.image = image;
+            barrier.subresourceRange = { aspect, 0, 1, 0, layers };
+            vkCmdPipelineBarrier(cmd, srcStage, dstStage, 0, 0, nullptr, 0, nullptr, 1, &barrier);
         }
-
-        bool HasDepth() const { return depthTexture != nullptr; }
-        VkFormat GetDepthFormat() const { return depthTexture ? depthTexture->depthFormat : VK_FORMAT_UNDEFINED; }
-        VkImageView GetDepthImageView() const { return depthTexture ? depthTexture->depthImageView : VK_NULL_HANDLE; }
     };
 }

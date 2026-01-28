@@ -91,7 +91,7 @@ namespace Simple3D {
 		void CreatePipelines(std::vector<ShaderSet*> shaders);
 
 		virtual void SetUpPass() = 0;
-		virtual void Execute(VkCommandBuffer cmd, const RenderData& data, uint32_t currentFrame) = 0;
+		virtual void Execute(VkCommandBuffer cmd, const RenderData& data, uint32_t currentFrame, uint32_t syncIndex) = 0;
 
 		virtual ~RenderPass() = default;
 

@@ -171,11 +171,11 @@ namespace Simple3D {
     }
 
     void Pipeline::UpdateDescriptors(uint32_t frameIndex) {
-        std::vector<VkWriteDescriptorSet> writes;
-
+        std::vector<VkWriteDescriptorSet> descriptorWrites;
         std::vector<VkDescriptorBufferInfo> bufferInfos;
         std::vector<VkDescriptorImageInfo> imageInfos;
 
+        descriptorWrites.reserve(bindings.size());
         bufferInfos.reserve(bindings.size());
         imageInfos.reserve(bindings.size());
 
@@ -190,37 +190,40 @@ namespace Simple3D {
             write.descriptorCount = 1;
 
             if (IsBufferType(binding.type)) {
-                if (binding.buffers[frameIndex] == VK_NULL_HANDLE) continue;
+                if (frameIndex >= binding.buffers.size() || binding.buffers[frameIndex] == VK_NULL_HANDLE) {
+                    continue;
+                }
 
-                VkDescriptorBufferInfo bufferInfo{};
-                bufferInfo.buffer = binding.buffers[frameIndex];
-                bufferInfo.offset = 0;
-                bufferInfo.range = binding.dataSize > 0 ? binding.dataSize : VK_WHOLE_SIZE;
+                VkDescriptorBufferInfo bInfo{};
+                bInfo.buffer = binding.buffers[frameIndex];
+                bInfo.offset = 0;
+                bInfo.range = (binding.dataSize > 0) ? binding.dataSize : VK_WHOLE_SIZE;
 
-                bufferInfos.push_back(bufferInfo);
+                bufferInfos.push_back(bInfo);
                 write.pBufferInfo = &bufferInfos.back();
             }
             else {
                 if (binding.imageView == VK_NULL_HANDLE) continue;
 
-                VkDescriptorImageInfo imgInfo{};
-                imgInfo.imageView = binding.imageView;
-                imgInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-                imgInfo.sampler = (binding.type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)
+                VkDescriptorImageInfo iInfo{};
+                iInfo.imageView = binding.imageView;
+                iInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                iInfo.sampler = (binding.type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)
                     ? binding.sampler : VK_NULL_HANDLE;
 
-                imageInfos.push_back(imgInfo);
+                imageInfos.push_back(iInfo);
                 write.pImageInfo = &imageInfos.back();
             }
 
-            writes.push_back(write);
+            descriptorWrites.push_back(write);
         }
 
-        if (!writes.empty()) {
+        // 3. Perform the actual update
+        if (!descriptorWrites.empty()) {
             vkUpdateDescriptorSets(
                 device->getLogicalDevice(),
-                static_cast<uint32_t>(writes.size()),
-                writes.data(),
+                static_cast<uint32_t>(descriptorWrites.size()),
+                descriptorWrites.data(),
                 0,
                 nullptr
             );

@@ -48,7 +48,7 @@ namespace Simple3D {
 		vkResetCommandBuffer(commandBuffers[currentFrame], 0);
 
 		// Record the Command buffer
-		recordCommandBuffer(commandBuffers[currentFrame], imageIndex, data);
+		recordCommandBuffer(commandBuffers[currentFrame], currentFrame, imageIndex, data);
 
 
 		// Submit the frame to screen
@@ -102,7 +102,7 @@ namespace Simple3D {
 	}
 
 
-	void Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex, RenderData& data) {
+	void Renderer::recordCommandBuffer(VkCommandBuffer cmd, uint32_t syncIndex, uint32_t imageIndex, RenderData& data) {
 
 		// Begin to record
 		VkCommandBufferBeginInfo beginInfo{};
@@ -112,7 +112,7 @@ namespace Simple3D {
 
 
 
-		if (vkBeginCommandBuffer(commandBuffer, &beginInfo) != VK_SUCCESS) {
+		if (vkBeginCommandBuffer(cmd, &beginInfo) != VK_SUCCESS) {
 			printf("failed to begin recording command buffer!");
 			throw std::runtime_error("failed to begin recording command buffer!");
 		}
@@ -138,7 +138,7 @@ namespace Simple3D {
 
 		// Render All Render to texture instances
 		for (RenderGraph* graph : RenderGraphs) {
-			graph->Execute(commandBuffer, data, imageIndex);
+			graph->Execute(cmd, data, imageIndex, syncIndex);
 			haveRendered = true;
 		}
 
@@ -157,8 +157,8 @@ namespace Simple3D {
 
 
 			// Clear the screen
-			vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
-			vkCmdEndRenderPass(commandBuffer);
+			vkCmdBeginRenderPass(cmd, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+			vkCmdEndRenderPass(cmd);
 		}
 
 
@@ -187,7 +187,7 @@ namespace Simple3D {
 			VkPipelineStageFlags srcStageMask1 = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
 			VkPipelineStageFlags dstStageMask1 = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
 
-			vkCmdPipelineBarrier(commandBuffer,
+			vkCmdPipelineBarrier(cmd,
 				srcStageMask1,
 				dstStageMask1,
 				0,
@@ -221,14 +221,14 @@ namespace Simple3D {
 			barrier2.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
 			barrier2.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT;
 
-			vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
-			drawImgui(commandBuffer, imageIndex);
-			vkCmdEndRenderPass(commandBuffer);
+			vkCmdBeginRenderPass(cmd, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+			drawImgui(cmd, imageIndex);
+			vkCmdEndRenderPass(cmd);
 
 			VkPipelineStageFlags srcStageMask2 = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
 			VkPipelineStageFlags dstStageMask2 = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
 
-			vkCmdPipelineBarrier(commandBuffer,
+			vkCmdPipelineBarrier(cmd,
 				srcStageMask2,
 				dstStageMask2,
 				0,
@@ -239,7 +239,7 @@ namespace Simple3D {
 #endif // USEIMGUI
 
 
-		if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
+		if (vkEndCommandBuffer(cmd) != VK_SUCCESS) {
 			printf("failed to record command buffer!");
 			throw std::runtime_error("failed to record command buffer!");
 		}

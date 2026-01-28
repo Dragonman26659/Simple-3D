@@ -25,7 +25,7 @@ namespace Simple3D {
         std::vector<VkFramebuffer> CreateFramebufferForTarget(Device& device, RenderTarget& target, VkRenderPass renderPass);
         void Build(Device& device, std::vector<ShaderSet*> shaders);
 
-        void Execute(VkCommandBuffer cmd, RenderData data, uint32_t currentFrame);
+        void Execute(VkCommandBuffer cmd, RenderData data, uint32_t currentFrame, uint32_t syncIndex);
         void Generate(Device& device, std::vector<ShaderSet*> shaders);
 
         void RegenerateFramebuffers(Device& device);

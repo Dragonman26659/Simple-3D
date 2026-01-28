@@ -16,15 +16,12 @@ namespace Simple3D {
         uint32_t count = 1;
         VkShaderStageFlags stageFlags = 0;
 
-        // size == MAX_FRAMES_IN_FLIGHT
-        // Map of the buffer using frameidex
         std::vector<VkBuffer> buffers;
         std::vector<VkDeviceMemory> bufferMemories;         
         std::vector<void*> mappedData;                      
         std::vector<VkDeviceSize> bufferSizes;
         size_t dataSize = 0;
 
-        // For images
         VkImageView imageView = VK_NULL_HANDLE;
         VkSampler sampler = VK_NULL_HANDLE;
         VkImageLayout imageLayout = VK_IMAGE_LAYOUT_UNDEFINED;

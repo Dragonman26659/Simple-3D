@@ -226,19 +226,30 @@ namespace Simple3D {
 		float queuePriority = 1.0f;
 		for (uint32_t queueFamily : uniqueQueueFamilies) {
 			VkDeviceQueueCreateInfo queueCreateInfo{};
-			queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+			queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
 			queueCreateInfo.queueFamilyIndex = queueFamily;
 			queueCreateInfo.queueCount = 1;
 			queueCreateInfo.pQueuePriorities = &queuePriority;
 			queueCreateInfos.push_back(queueCreateInfo);
 		}
 
+		// --- 1. Basic Features ---
 		VkPhysicalDeviceFeatures deviceFeatures{};
 		deviceFeatures.samplerAnisotropy = VK_TRUE;
 		deviceFeatures.fragmentStoresAndAtomics = VK_TRUE;
 
+		// --- 2. Vulkan 1.2 Features (For gl_Layer support) ---
+		// This structure enables the ability to write to gl_Layer in the Vertex Shader
+		VkPhysicalDeviceVulkan12Features features12{};
+		features12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
+		features12.shaderOutputLayer = VK_TRUE;          // Crucial for gl_Layer
+		features12.shaderOutputViewportIndex = VK_TRUE;   // Often used alongside gl_Layer
+
 		VkDeviceCreateInfo createInfo{};
 		createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+
+		// Link the 1.2 features to the createInfo pNext chain
+		createInfo.pNext = &features12;
 
 		createInfo.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size());
 		createInfo.pQueueCreateInfos = queueCreateInfos.data();
@@ -248,14 +259,6 @@ namespace Simple3D {
 		createInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size());
 		createInfo.ppEnabledExtensionNames = deviceExtensions.data();
 
-		//if (enableValidationLayers) {
-		//	createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
-		//	createInfo.ppEnabledLayerNames = validationLayers.data();
-		//}
-		//else {
-		//	createInfo.enabledLayerCount = 0;
-		//}
-		
 		if (vkCreateDevice(physicalDevice, &createInfo, nullptr, &device) != VK_SUCCESS) {
 			throw std::runtime_error("failed to create logical device!");
 		}
