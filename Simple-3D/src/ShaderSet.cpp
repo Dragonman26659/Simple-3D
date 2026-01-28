@@ -4,7 +4,6 @@
 
 
 namespace Simple3D {
-    // If you use SPIRV-Reflect's enum directly:
     inline VkShaderStageFlagBits spvReflectShaderStageToVk(SpvReflectShaderStageFlagBits s)
     {
         switch (s) {
@@ -18,7 +17,6 @@ namespace Simple3D {
         }
     }
 
-    // If you want to map your own ShaderStage enum (from earlier message):
     inline VkShaderStageFlagBits spvReflectShaderStageToVk(ShaderStage s)
     {
         switch (s) {
@@ -76,7 +74,6 @@ namespace Simple3D {
         }
     }
 
-    // helper: convert ShaderStage (or SpvReflect stage) to string
     const char* StageName(ShaderStage s) {
         switch (s) {
         case ShaderStage::Vertex: return "VERTEX";
@@ -284,7 +281,7 @@ namespace Simple3D {
             shaderStages[i].pName = "main";
         }
 
-        // Vertex input description (assuming fixed vertex layout)
+        // Vertex input description
         auto bindingDescription = Vertex::getBindingDescription();
         auto attributeDescriptions = Vertex::getAttributeDescriptions();
 

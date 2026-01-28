@@ -67,7 +67,7 @@ namespace Simple3D {
         }
     }
 
-    void Pipeline::BindData(const std::string& name, const void* data, size_t size, uint32_t arrayIndex) {
+    void Pipeline::BindData(const std::string& name, const void* data, size_t size, uint32_t frameIndex) {
         auto it = bindings.find(name);
         if (it == bindings.end()) {
             throw std::runtime_error("Binding name not found: " + name);
@@ -75,56 +75,82 @@ namespace Simple3D {
 
         BindingInfo& binding = it->second;
 
-        if (binding.type != VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER &&
-            binding.type != VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC &&
-            binding.type != VK_DESCRIPTOR_TYPE_STORAGE_BUFFER &&
-            binding.type != VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC) {
+        const bool isBuffer =
+            binding.type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER ||
+            binding.type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC ||
+            binding.type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER ||
+            binding.type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
+
+        if (!isBuffer) {
             throw std::runtime_error("BindData called for non-buffer binding: " + name);
         }
 
-        // allocate per-frame if not allocated yet
-        if (binding.buffers.empty()) {
+
+        if (binding.buffers.size() < MAX_FRAMES_IN_FLIGHT) {
             binding.buffers.resize(MAX_FRAMES_IN_FLIGHT, VK_NULL_HANDLE);
             binding.bufferMemories.resize(MAX_FRAMES_IN_FLIGHT, VK_NULL_HANDLE);
             binding.mappedData.resize(MAX_FRAMES_IN_FLIGHT, nullptr);
-
-            VkDeviceSize bufferSize = size;
-
-            // optional: align bufferSize to minUniformBufferOffsetAlignment if you will use offsets
-            VkPhysicalDeviceProperties props = device->GetProperties();
-            VkDeviceSize minUboAlign = props.limits.minUniformBufferOffsetAlignment;
-            if (binding.type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER || binding.type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC) {
-                if (minUboAlign > 0) {
-                    bufferSize = (bufferSize + minUboAlign - 1) & ~(minUboAlign - 1);
-                }
-            }
-
-            VkBufferUsageFlags usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
-            if (binding.type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER || binding.type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC)
-                usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
-
-            for (uint32_t f = 0; f < MAX_FRAMES_IN_FLIGHT; ++f) {
-                createBuffer(bufferSize, usage,
-                    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                    binding.buffers[f], binding.bufferMemories[f], device);
-
-                // map memory and keep mapped pointer
-                void* mapped = nullptr;
-                vkMapMemory(device->getLogicalDevice(), binding.bufferMemories[f], 0, bufferSize, 0, &mapped);
-                binding.mappedData[f] = mapped;
-            }
-
-            binding.dataSize = size; // logical size, not necessarily the allocation size
+            binding.bufferSizes.resize(MAX_FRAMES_IN_FLIGHT, 0);
         }
 
-        // by default write to all frames (you can choose to only write the current frame)
-        for (uint32_t f = 0; f < MAX_FRAMES_IN_FLIGHT; ++f) {
-            if (size > 0 && data != nullptr) {
-                for (uint32_t f = 0; f < MAX_FRAMES_IN_FLIGHT; ++f) {
-                    std::memcpy(binding.mappedData[f], data, size);
-                }
+        VkDeviceSize requiredSize = size;
+
+        if (binding.type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER ||
+            binding.type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC) {
+
+            VkDeviceSize alignment =
+                device->GetProperties().limits.minUniformBufferOffsetAlignment;
+
+            if (alignment > 0) {
+                requiredSize = (requiredSize + alignment - 1) & ~(alignment - 1);
             }
         }
+
+        if (binding.buffers[frameIndex] == VK_NULL_HANDLE ||
+            binding.bufferSizes[frameIndex] < requiredSize) {
+
+            if (binding.buffers[frameIndex] != VK_NULL_HANDLE) {
+                vkUnmapMemory(device->getLogicalDevice(), binding.bufferMemories[frameIndex]);
+                vkDestroyBuffer(device->getLogicalDevice(), binding.buffers[frameIndex], nullptr);
+                vkFreeMemory(device->getLogicalDevice(), binding.bufferMemories[frameIndex], nullptr);
+            }
+
+            VkBufferUsageFlags usage =
+                (binding.type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER ||
+                    binding.type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC)
+                ? VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
+                : VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+
+            createBuffer(
+                requiredSize,
+                usage,
+                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                binding.buffers[frameIndex],
+                binding.bufferMemories[frameIndex],
+                device
+            );
+
+            auto result = vkMapMemory(
+                device->getLogicalDevice(),
+                binding.bufferMemories[frameIndex],
+                0,
+                requiredSize,
+                0,
+                &binding.mappedData[frameIndex]
+            );
+
+            if (result != VK_SUCCESS) {
+                printf("Failed To Map Memory");
+            }
+
+            binding.bufferSizes[frameIndex] = requiredSize;
+        }
+
+        if (data && size > 0) {
+            std::memcpy(binding.mappedData[frameIndex], data, size);
+        }
+
+        binding.dataSize = size;
     }
 
     void Pipeline::BindData(const std::string& name, const VkDescriptorImageInfo& imgInfo, uint32_t arrayIndex) {
@@ -144,22 +170,17 @@ namespace Simple3D {
         bindInfo.imageLayout = imgInfo.imageLayout;
     }
 
-
-    void Pipeline::UpdateDescriptors(uint32_t frameIndex)
-    {
+    void Pipeline::UpdateDescriptors(uint32_t frameIndex) {
         std::vector<VkWriteDescriptorSet> writes;
-        std::vector<VkDescriptorBufferInfo> bufferInfos_persistent;
-        std::vector<VkDescriptorImageInfo> imageInfos_persistent;
-        writes.reserve(bindings.size());
-        bufferInfos_persistent.reserve(bindings.size());
-        imageInfos_persistent.reserve(bindings.size());
+
+        std::vector<VkDescriptorBufferInfo> bufferInfos;
+        std::vector<VkDescriptorImageInfo> imageInfos;
+
+        bufferInfos.reserve(bindings.size());
+        imageInfos.reserve(bindings.size());
 
         for (auto& [name, binding] : bindings) {
-            assert(frameIndex < descriptorSets.size());
-            assert(binding.set < descriptorSets[frameIndex].size());
-
             VkDescriptorSet dstSet = descriptorSets[frameIndex][binding.set];
-            assert(dstSet != VK_NULL_HANDLE);
 
             VkWriteDescriptorSet write{ VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
             write.dstSet = dstSet;
@@ -169,40 +190,41 @@ namespace Simple3D {
             write.descriptorCount = 1;
 
             if (IsBufferType(binding.type)) {
-                assert(binding.buffers.size() > frameIndex);
-                assert(binding.buffers[frameIndex] != VK_NULL_HANDLE);
+                if (binding.buffers[frameIndex] == VK_NULL_HANDLE) continue;
 
-                bufferInfos_persistent.push_back({
-                    binding.buffers[frameIndex],
-                    0,
-                    binding.dataSize ? binding.dataSize : VK_WHOLE_SIZE
-                    });
+                VkDescriptorBufferInfo bufferInfo{};
+                bufferInfo.buffer = binding.buffers[frameIndex];
+                bufferInfo.offset = 0;
+                bufferInfo.range = binding.dataSize > 0 ? binding.dataSize : VK_WHOLE_SIZE;
 
-                write.pBufferInfo = &bufferInfos_persistent.back();
-                writes.push_back(write);
+                bufferInfos.push_back(bufferInfo);
+                write.pBufferInfo = &bufferInfos.back();
             }
             else {
-                assert(binding.imageView != VK_NULL_HANDLE);
+                if (binding.imageView == VK_NULL_HANDLE) continue;
 
-                VkDescriptorImageInfo imgInfoToPush{};
-                imgInfoToPush.imageView = binding.imageView;
-                imgInfoToPush.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                VkDescriptorImageInfo imgInfo{};
+                imgInfo.imageView = binding.imageView;
+                imgInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                imgInfo.sampler = (binding.type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)
+                    ? binding.sampler : VK_NULL_HANDLE;
 
-                imgInfoToPush.sampler =
-                    (binding.type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)
-                    ? binding.sampler
-                    : VK_NULL_HANDLE;
-
-                imageInfos_persistent.push_back(imgInfoToPush);
-                write.pImageInfo = &imageInfos_persistent.back();
-                writes.push_back(write);
+                imageInfos.push_back(imgInfo);
+                write.pImageInfo = &imageInfos.back();
             }
+
+            writes.push_back(write);
         }
 
-        vkUpdateDescriptorSets(device->getLogicalDevice(),
-            static_cast<uint32_t>(writes.size()),
-            writes.data(),
-            0, nullptr);
+        if (!writes.empty()) {
+            vkUpdateDescriptorSets(
+                device->getLogicalDevice(),
+                static_cast<uint32_t>(writes.size()),
+                writes.data(),
+                0,
+                nullptr
+            );
+        }
     }
 
     void Pipeline::CreateDescriptorSets() {
@@ -229,7 +251,6 @@ namespace Simple3D {
             alloc.descriptorSetCount = static_cast<uint32_t>(setLayouts.size());
             alloc.pSetLayouts = setLayouts.data();
 
-            // allocate into the address of the first element of the frame's vector
             if (vkAllocateDescriptorSets(device->getLogicalDevice(), &alloc, descriptorSets[i].data()) != VK_SUCCESS) {
                 throw std::runtime_error("Failed to allocate descriptor sets!");
             }
@@ -282,7 +303,7 @@ namespace Simple3D {
         multisampling.sampleShadingEnable = cfg.sampleShadingEnable;
         multisampling.rasterizationSamples = cfg.rasterizationSamples;
 
-        // Viewport state (required even if dynamic)
+        // Viewport state
         VkPipelineViewportStateCreateInfo viewportState{ VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO };
         viewportState.viewportCount = 1;
         viewportState.pViewports = nullptr;
@@ -357,12 +378,6 @@ namespace Simple3D {
 
 
     void Pipeline::PopulateBindingsFromShaderSet() {
-        // Assuming ShaderSet exposes descriptorSets in a usable structure.
-        // shaderSet->descriptorSets : std::map<uint32_t, std::vector<...>> or similar
-        // Adapt to your ShaderSet::descriptorSets shape. The example below expects:
-        // shaderSet->descriptorSets: std::map<uint32_t, std::vector<DescriptorEntry>>
-        // where DescriptorEntry has fields: binding, set, type, count, name, stageFlags
-
         bindings.clear();
 
         // Access the map on ShaderSet (make it friend or accessor if needed).
@@ -410,7 +425,7 @@ namespace Simple3D {
             cmd,
             layout,
             stageFlags,
-            range->offset,        // use SPIRV-reflect offset
+            range->offset,
             (uint32_t)size,
             data
         );

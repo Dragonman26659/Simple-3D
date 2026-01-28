@@ -202,26 +202,23 @@ namespace Simple3D {
         if (!CreatedDescriptors)
             CreateDescriptorSets();
 
-
         std::vector<VkWriteDescriptorSet> writes;
         std::vector<VkDescriptorImageInfo> imageInfos;
+
+        imageInfos.reserve(textures.size());
+        writes.reserve(textures.size());
 
         for (const auto& [name, tex] : textures) {
             const DescriptorBinding* refl = shaders->GetBinding(name);
 
-            if (!refl) {
-                continue;
-            }
-
-            if (refl->set != 1) {
-                continue;
-            }
-
+            if (!refl) continue;
+            if (refl->set != 1) continue;
             if (refl->type != VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER &&
                 refl->type != VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE) {
                 continue;
             }
 
+            // Create the info
             VkDescriptorImageInfo img{};
             img.imageView = tex.view;
             img.sampler = tex.sampler;

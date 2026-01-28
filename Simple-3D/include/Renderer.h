@@ -200,7 +200,6 @@ namespace Simple3D {
 		DepthBuffer* CreateDepth(RenderTarget target);
 		DepthBuffer* CreateDepth(VkExtent2D extent);
 
-
 		bool VALIDATION_LAYERS_ENABLED = true;
 
 #ifdef USEIMGUI
