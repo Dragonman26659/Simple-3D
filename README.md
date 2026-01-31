@@ -11,3 +11,6 @@ The API is in active development and I plan to add these features in future:
 
 
 I will provide shader templates for how to write shaders eventually 
+
+
+** Warning the examples are currently out of data and will be updated soon
