@@ -95,6 +95,8 @@ namespace Simple3D {
 
 		virtual ~RenderPass() = default;
 
+
+		bool isOverlay = false;
 		VkRenderPass renderPass = VK_NULL_HANDLE;
 		Device* device;
 		VkCommandPool* commandPool;

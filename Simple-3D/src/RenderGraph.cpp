@@ -201,7 +201,14 @@ namespace Simple3D {
                 ? VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
                 : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
-            attachments.push_back(target.GetColorAttachmentDescription(i, finalLayout));
+            VkAttachmentDescription desc = target.GetColorAttachmentDescription(i, finalLayout);
+
+            if (isOverlay) {
+                desc.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+                desc.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+            }
+
+            attachments.push_back(desc);
 
             VkAttachmentReference ref{};
             ref.attachment = i; // Index in the 'attachments' vector

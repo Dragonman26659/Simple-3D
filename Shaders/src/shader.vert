@@ -22,13 +22,16 @@ layout(location = 4) out vec4 tangent;      // Position output
 layout(location = 5) out vec3 cameraPos;      // Position output
 
 void main() {
+    // Standard position transformation
     gl_Position = ubo.proj * ubo.view * ubo.model * vec4(inPosition, 1.0);
 
-    
+    mat3 normalMatrix = transpose(inverse(mat3(ubo.model)));
+    normalOut = normalize(normalMatrix * normal);
+    tangent = vec4(normalize(mat3(ubo.model) * inTangent.xyz), inTangent.w);
+
+    // Pass through other data
     fragColor = inColor;
     fragTexCoord = inTexCoord;
-    normalOut = normal;
-    tangent = inTangent;
     cameraPos = vec3(ubo.cameraPos);
-    fragPos = vec3(ubo.model * vec4(inPosition, 1.0f));
+    fragPos = vec3(ubo.model * vec4(inPosition, 1.0));
 }
