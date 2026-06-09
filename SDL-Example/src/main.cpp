@@ -425,11 +425,7 @@ int main() {
     
     Simple3D::RenderGraph* imguiGraph = renderer->CreateRenderGraph("Main");
     Simple3D::RenderTarget imguiTarget = Simple3D::RenderTarget();
-    imguiTarget.
-        
-        
-        
-        ture(ImguiTexture);
+    imguiTarget.AddTexture(ImguiTexture);
     imguiTarget.depthTexture = renderer->CreateDepth(imguiTarget);
 
     imguiGraph->AddResource("ImguiTexture", &imguiTarget);

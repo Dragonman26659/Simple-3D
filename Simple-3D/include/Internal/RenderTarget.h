@@ -21,7 +21,19 @@ namespace Simple3D {
         bool IsSwapchain() const { return swapchain != nullptr; }
         bool IsTexture()   const { return !colorAttachments.empty(); }
         bool HasDepth()    const { return depthTexture != nullptr; }
-        bool IsValid()     const { return (swapchain != nullptr) != (!colorAttachments.empty() || depthTexture != nullptr); }
+        bool IsValid() const {
+            // 1. Cannot be both a swapchain and a custom offscreen color texture list
+            if (swapchain != nullptr && !colorAttachments.empty()) {
+                return false;
+            }
+
+            // 2. Must have at least one valid rendering resource attached
+            bool hasAnyResource = (swapchain != nullptr) ||
+                (!colorAttachments.empty()) ||
+                (depthTexture != nullptr);
+
+            return hasAnyResource;
+        }
 
         void AddTexture(RenderTexture* tex) {
             colorAttachments.push_back(tex);
