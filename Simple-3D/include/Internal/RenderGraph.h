@@ -1,6 +1,7 @@
 #pragma once
 #include "SimpleCore.h"
 #include "RenderPass.h"
+#include "JobSystem.h"
 
 
 
@@ -25,7 +26,7 @@ namespace Simple3D {
         std::vector<VkFramebuffer> CreateFramebufferForTarget(Device& device, RenderTarget& target, VkRenderPass renderPass);
         void Build(Device& device, std::vector<ShaderSet*> shaders);
 
-        void Execute(VkCommandBuffer cmd, RenderData data, uint32_t currentFrame, uint32_t syncIndex);
+        void Execute(VkCommandBuffer cmd, RenderData data, uint32_t currentFrame, uint32_t syncIndex, IJobSystem* jobSystem);
         void Generate(Device& device, std::vector<ShaderSet*> shaders);
 
         void RegenerateFramebuffers(Device& device);

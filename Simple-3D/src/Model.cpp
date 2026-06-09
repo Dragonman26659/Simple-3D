@@ -1,158 +1,177 @@
 ﻿#include "Component/Renderable/Model.h"
-
+#include "Internal/Allocator.h"   // VMA helper
+#include "Internal/Tools.h"       // createBuffer (VMA overload), copyBuffer
 
 namespace Simple3D {
 
-    Model::Model(std::vector<Vertex> verticies, std::vector<uint32_t> indices, bool isDynamic)
-        : Verticies(verticies), Indices(indices), DynamicModel(isDynamic) {
-
+    Model::Model(std::vector<Vertex>   verticies,
+        std::vector<uint32_t> indices,
+        bool                  isDynamic)
+        : Verticies(verticies), Indices(indices), DynamicModel(isDynamic)
+    {
     }
 
-    Model::~Model() {
-        if (BufferEnabled) {
+    Model::~Model()
+    {
+        if (BufferEnabled)
             DestroyBuffers();
-        }
     }
 
-    void Model::CreateBuffers(Device* device, VkCommandPool* commandPool) {
+    // ── CreateBuffers ─────────────────────────────────────────────────────────────
+    void Model::CreateBuffers(Device* device, VkCommandPool* commandPool)
+    {
         r_device = device;
         r_commandPool = commandPool;
-
-
         CreateVertexBuffer();
         CreateIndexBuffer();
-
         BufferEnabled = true;
     }
 
-    void Model::CreateBuffers() {
+    void Model::CreateBuffers()
+    {
         CreateVertexBuffer();
         CreateIndexBuffer();
-
         BufferEnabled = true;
     }
 
-    VkBuffer Model::GetVertexBuffer() {
-        return vertexBuffer; 
-    }
+    // ── Getters ───────────────────────────────────────────────────────────────────
+    VkBuffer Model::GetVertexBuffer() { return vertexBuffer; }
+    VkBuffer Model::GetIndexBuffer() { return indexBuffer; }
 
-    VkBuffer Model::GetIndexBuffer() {
-        return indexBuffer;
-    }
-
-    void Model::DestroyBuffers() {
-        if (DynamicModel && vertexBufferMapped) {
-            vkUnmapMemory(r_device->getLogicalDevice(), vertexBufferMemory);
+    // ── DestroyBuffers ────────────────────────────────────────────────────────────
+    void Model::DestroyBuffers()
+    {
+        // Unmap before destroying
+        if (DynamicModel && vertexBufferMapped)
+        {
+            vmaUnmapMemory(Allocator::Get(), vertexAlloc.handle);
             vertexBufferMapped = nullptr;
         }
 
-        if (vertexBuffer != VK_NULL_HANDLE) {
-            vkDestroyBuffer(r_device->getLogicalDevice(), vertexBuffer, nullptr);
+        if (vertexBuffer != VK_NULL_HANDLE)
+        {
+            vmaDestroyBuffer(Allocator::Get(), vertexBuffer, vertexAlloc.handle);
             vertexBuffer = VK_NULL_HANDLE;
+            vertexAlloc = {};
         }
 
-        if (vertexBufferMemory != VK_NULL_HANDLE) {
-            vkFreeMemory(r_device->getLogicalDevice(), vertexBufferMemory, nullptr);
-            vertexBufferMemory = VK_NULL_HANDLE;
+        if (indexBuffer != VK_NULL_HANDLE)
+        {
+            vmaDestroyBuffer(Allocator::Get(), indexBuffer, indexAlloc.handle);
+            indexBuffer = VK_NULL_HANDLE;
+            indexAlloc = {};
         }
 
         r_device = nullptr;
         r_commandPool = nullptr;
         BufferEnabled = false;
-     }
+    }
 
-    void Model::CreateVertexBuffer() {
+    // ── CreateVertexBuffer ────────────────────────────────────────────────────────
+    void Model::CreateVertexBuffer()
+    {
         VkDeviceSize bufferSize = sizeof(Verticies[0]) * Verticies.size();
 
-        if (DynamicModel) {
-            // --- Dynamic mesh: host-visible, coherent, persistently mapped ---
+        // Build usage flags.  RT requires SHADER_DEVICE_ADDRESS_BIT and
+        // ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR on vertex buffers.
+        // We always include both so that BLAS builds work without re-creating buffers.
+        const VkBufferUsageFlags rtFlags =
+            VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
+            VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR;
+
+        if (DynamicModel)
+        {
+            // --- Dynamic: host-visible + coherent, persistently mapped ---
             createBuffer(bufferSize,
-                VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                vertexBuffer,
-                vertexBufferMemory,
+                VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | rtFlags,
+                VMA_MEMORY_USAGE_AUTO,
+                VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
+                VMA_ALLOCATION_CREATE_MAPPED_BIT,
+                vertexBuffer, vertexAlloc,
                 r_device);
 
-            // Optionally persistently map (for max performance)
-            vkMapMemory(r_device->getLogicalDevice(), vertexBufferMemory, 0, bufferSize, 0, &vertexBufferMapped);
-            memcpy(vertexBufferMapped, Verticies.data(), (size_t)bufferSize);
-
+            // VMA fills alloc.info.pMappedData for MAPPED allocations.
+            vertexBufferMapped = vertexAlloc.info.pMappedData;
+            memcpy(vertexBufferMapped, Verticies.data(), static_cast<size_t>(bufferSize));
         }
-        else {
-            // --- Static mesh: staging buffer → device-local ---
-            VkBuffer stagingBuffer;
-            VkDeviceMemory stagingBufferMemory;
+        else
+        {
+            // --- Static: staging → device-local ---
+            VkBuffer   stagingBuffer{};
+            Allocation stagingAlloc{};
             createBuffer(bufferSize,
                 VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                stagingBuffer,
-                stagingBufferMemory,
+                VMA_MEMORY_USAGE_AUTO,
+                VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT,
+                stagingBuffer, stagingAlloc,
                 r_device);
 
-            // Copy vertex data to staging buffer
-            void* data;
-            vkMapMemory(r_device->getLogicalDevice(), stagingBufferMemory, 0, bufferSize, 0, &data);
-            memcpy(data, Verticies.data(), (size_t)bufferSize);
-            vkUnmapMemory(r_device->getLogicalDevice(), stagingBufferMemory);
+            void* mapped{};
+            vmaMapMemory(Allocator::Get(), stagingAlloc.handle, &mapped);
+            memcpy(mapped, Verticies.data(), static_cast<size_t>(bufferSize));
+            vmaUnmapMemory(Allocator::Get(), stagingAlloc.handle);
 
-            // Create device-local vertex buffer
             createBuffer(bufferSize,
-                VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-                vertexBuffer,
-                vertexBufferMemory,
+                VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+                VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | rtFlags,
+                VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE,
+                0,
+                vertexBuffer, vertexAlloc,
                 r_device);
 
             copyBuffer(stagingBuffer, vertexBuffer, bufferSize, r_device, r_commandPool);
 
-            // Clean up staging
-            vkDestroyBuffer(r_device->getLogicalDevice(), stagingBuffer, nullptr);
-            vkFreeMemory(r_device->getLogicalDevice(), stagingBufferMemory, nullptr);
+            vmaDestroyBuffer(Allocator::Get(), stagingBuffer, stagingAlloc.handle);
         }
     }
 
-    void Model::CreateIndexBuffer() {
+    // ── CreateIndexBuffer ─────────────────────────────────────────────────────────
+    void Model::CreateIndexBuffer()
+    {
         VkDeviceSize bufferSize = sizeof(Indices[0]) * Indices.size();
 
-        VkBuffer stagingBuffer;
-        VkDeviceMemory stagingBufferMemory;
-        createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer, stagingBufferMemory, r_device);
+        const VkBufferUsageFlags rtFlags =
+            VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
+            VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR;
 
-        void* data;
-        vkMapMemory(r_device->getLogicalDevice(), stagingBufferMemory, 0, bufferSize, 0, &data);
-        memcpy(data, Indices.data(), (size_t)bufferSize);
-        vkUnmapMemory(r_device->getLogicalDevice(), stagingBufferMemory);
+        VkBuffer   stagingBuffer{};
+        Allocation stagingAlloc{};
+        createBuffer(bufferSize,
+            VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+            VMA_MEMORY_USAGE_AUTO,
+            VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT,
+            stagingBuffer, stagingAlloc,
+            r_device);
 
-        createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, indexBuffer, indexBufferMemory, r_device);
+        void* mapped{};
+        vmaMapMemory(Allocator::Get(), stagingAlloc.handle, &mapped);
+        memcpy(mapped, Indices.data(), static_cast<size_t>(bufferSize));
+        vmaUnmapMemory(Allocator::Get(), stagingAlloc.handle);
+
+        createBuffer(bufferSize,
+            VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+            VK_BUFFER_USAGE_INDEX_BUFFER_BIT | rtFlags,
+            VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE,
+            0,
+            indexBuffer, indexAlloc,
+            r_device);
 
         copyBuffer(stagingBuffer, indexBuffer, bufferSize, r_device, r_commandPool);
-
-        vkDestroyBuffer(r_device->getLogicalDevice(), stagingBuffer, nullptr);
-        vkFreeMemory(r_device->getLogicalDevice(), stagingBufferMemory, nullptr);
+        vmaDestroyBuffer(Allocator::Get(), stagingBuffer, stagingAlloc.handle);
     }
 
-    void Model::BindMaterial(Material* newMaterial) {
-        material = newMaterial;
-    }
+    // ── Misc ──────────────────────────────────────────────────────────────────────
+    void Model::BindMaterial(Material* newMaterial) { material = newMaterial; }
 
+    void Model::SetTransform(const glm::mat4 n_transform) { transform = n_transform; }
 
-    void Model::SetTransform(const glm::mat4 n_transform) {
-          transform = n_transform;
-    }
+    bool Model::hasBuffer() { return BufferEnabled; }
 
+    std::vector<Vertex> Model::GetVerticies() { return Verticies; }
 
-    bool Model::hasBuffer() {
-        return BufferEnabled;
-    }
+    const glm::mat4 Model::GetTransform() { return transform; }
 
-    std::vector<Vertex> Model::GetVerticies() {
-        return Verticies;
-    }
-
-    const glm::mat4 Model::GetTransform() {
-        return transform;
-    }
-
+    // ── UpdateVerticies ───────────────────────────────────────────────────────────
     bool Model::UpdateVerticies(std::vector<Vertex> newVerticies)
     {
         if (!BufferEnabled || vertexBuffer == VK_NULL_HANDLE || !DynamicModel)
@@ -162,21 +181,22 @@ namespace Simple3D {
             return false;
 
         Verticies = std::move(newVerticies);
-
         VkDeviceSize bufferSize = sizeof(Verticies[0]) * Verticies.size();
 
-        if (vertexBufferMapped) {
-            // --- Fast path: persistently mapped ---
-            memcpy(vertexBufferMapped, Verticies.data(), (size_t)bufferSize);
+        if (vertexBufferMapped)
+        {
+            // Fast path: VMA_ALLOCATION_CREATE_MAPPED_BIT keeps it permanently mapped.
+            memcpy(vertexBufferMapped, Verticies.data(), static_cast<size_t>(bufferSize));
         }
-        else {
-            // --- Fallback: map/unmap each frame ---
-            void* data;
-            vkMapMemory(r_device->getLogicalDevice(), vertexBufferMemory, 0, bufferSize, 0, &data);
-            memcpy(data, Verticies.data(), (size_t)bufferSize);
-            vkUnmapMemory(r_device->getLogicalDevice(), vertexBufferMemory);
+        else
+        {
+            void* mapped{};
+            vmaMapMemory(Allocator::Get(), vertexAlloc.handle, &mapped);
+            memcpy(mapped, Verticies.data(), static_cast<size_t>(bufferSize));
+            vmaUnmapMemory(Allocator::Get(), vertexAlloc.handle);
         }
 
         return true;
     }
-}
+
+} // namespace Simple3D

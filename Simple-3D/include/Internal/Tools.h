@@ -1,126 +1,224 @@
-#pragma once
+﻿#pragma once
 #include "SimpleCore.h"
 #include "Internal/Device.h"
+#include "Internal/Allocator.h"   // brings in Allocation + VmaAllocator
+
+#include <string>
+#include <vector>
+#include <vulkan/vulkan.h>
 
 namespace Simple3D {
 
-	// Binding for each texture
-	struct TextureBinding {
-		VkImageView view;
-		VkSampler sampler;
-		VkDescriptorSet descriptorSet;
+    // ── TextureBinding ────────────────────────────────────────────────────────
+    struct TextureBinding {
+        VkImage         textureImage = VK_NULL_HANDLE;
+        VkDeviceMemory  textureImageMemory = VK_NULL_HANDLE;
+        VkImageView     view = VK_NULL_HANDLE;
+        VkSampler       sampler = VK_NULL_HANDLE;
+        VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
+        int             width = 0;
+        int             height = 0;
 
-		// Image + image memory
-		VkImage textureImage;
-		VkDeviceMemory textureImageMemory;
+        // Set to a valid index after BindlessRegistry::Register().
+        // UINT32_MAX means "not registered in the bindless table".
+        uint32_t        bindlessHandle = UINT32_MAX;
+    };
 
-		int width, height;
-	};
+    // =========================================================================
+    //  Core VMA-backed helpers (non-inline, defined in Tools.cpp)
+    // =========================================================================
 
-	void createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buffer, VkDeviceMemory& bufferMemory, Device* device);
+    // Buffer allocation via VMA.
+    void createBuffer(VkDeviceSize            size,
+        VkBufferUsageFlags      usage,
+        VmaMemoryUsage          memUsage,
+        VmaAllocationCreateFlags allocFlags,
+        VkBuffer& buffer,
+        Allocation& alloc,
+        Device* device);
 
-	uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties, Device* device);
+    // Image allocation via VMA.
+    void createImage(const VkImageCreateInfo& info,
+        VkImage& image,
+        Allocation& alloc,
+        Device* device);
 
-	void copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size, Device* device, VkCommandPool* commandPool);
+    // Single-time command helpers.
+    VkCommandBuffer beginSingleTimeCommands(Device* device,
+        VkCommandPool* pool);
+    void            endSingleTimeCommands(Device* device,
+        VkCommandPool* pool,
+        VkCommandBuffer* cmd);
 
-	VkCommandBuffer beginSingleTimeCommands(Device* device, VkCommandPool* commandPool);
+    // Mipmap generation (blit-based, requires linear-filter support).
+    void generateMipmaps(VkImage        image,
+        VkFormat       format,
+        int32_t        texWidth,
+        int32_t        texHeight,
+        uint32_t       mipLevels,
+        uint32_t       layers,
+        Device* device,
+        VkCommandPool* pool);
 
-	void endSingleTimeCommands(Device* device, VkCommandPool* commandPool, VkCommandBuffer* commandBuffer);
+    // Image views.
+    VkImageView createImageView(VkImage            image,
+        VkFormat           format,
+        VkImageAspectFlags aspectFlags,
+        Device* device);
 
-	void copyBufferToImage(VkBuffer buffer, VkImage image, uint32_t width, uint32_t height, Device* device, VkCommandPool* commandPool);
+    VkImageView createImageView(VkImage            image,
+        VkFormat           format,
+        VkImageAspectFlags aspectFlags,
+        uint32_t           mipLevels,
+        uint32_t           layers,
+        VkImageViewType    viewType,
+        Device* device);
 
-	void transitionImageLayout(VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout, Device* device, VkCommandPool* commandPool, uint32_t layerCount);
+    // Buffer copy.
+    void copyBuffer(VkBuffer       src,
+        VkBuffer       dst,
+        VkDeviceSize   size,
+        Device* device,
+        VkCommandPool* pool);
 
-	VkImageView createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags, Device* device);
+    // Image copies.
+    void copyBufferToImage(VkBuffer       buffer,
+        VkImage        image,
+        uint32_t       width,
+        uint32_t       height,
+        Device* device,
+        VkCommandPool* pool);
 
-	VkFormat findDepthFormat(Device* device);
+    void copyBufferToImage(VkBuffer       buffer,
+        VkImage        image,
+        uint32_t       width,
+        uint32_t       height,
+        uint32_t       layers,
+        Device* device,
+        VkCommandPool* pool);
 
-	VkFormat findSupportedFormat(const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features, Device* device);
+    // Layout transitions.
+    // 6-arg: 1 mip level, N layers (default 1).
+    void transitionImageLayout(VkImage        image,
+        VkFormat       format,
+        VkImageLayout  oldLayout,
+        VkImageLayout  newLayout,
+        Device* device,
+        VkCommandPool* pool,
+        uint32_t       layerCount = 1);
 
-	bool hasStencilComponent(VkFormat format);
+    // 8-arg: explicit mip + layer counts (used by TextureCube, DepthBuffer array).
+    void transitionImageLayout(VkImage        image,
+        VkFormat       format,
+        VkImageLayout  oldLayout,
+        VkImageLayout  newLayout,
+        uint32_t       mipLevels,
+        uint32_t       layers,
+        Device* device,
+        VkCommandPool* pool);
 
-	void createImage(uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage& image, VkDeviceMemory& imageMemory, Device* device, uint32_t layerCount = 1);
+    // Format / memory queries.
+    VkFormat  findSupportedFormat(const std::vector<VkFormat>& candidates,
+        VkImageTiling                tiling,
+        VkFormatFeatureFlags         features,
+        Device* device);
+    VkFormat  findDepthFormat(Device* device);
+    bool      hasStencilComponent(VkFormat format);
+    uint32_t  findMemoryType(uint32_t              typeFilter,
+        VkMemoryPropertyFlags properties,
+        Device* device);
 
-	void createTextureSampler(TextureBinding* binding, Device* device);
+    // Sampler + high-level texture loader.
+    void           createTextureSampler(TextureBinding* binding, Device* device);
+    TextureBinding CreateTextureBinding(const std::string& filepath,
+        Device* device,
+        VkCommandPool* pool);
 
-	TextureBinding CreateTextureBinding(std::string filepath, Device* r_device, VkCommandPool* r_commandPool);
+    // =========================================================================
+    //  Legacy-compatibility inline overloads
+    //  (keep old call sites in Model, Material, Pipeline, DepthBuffer building
+    //   without any source changes at those call sites)
+    // =========================================================================
 
-	static VkDeviceSize getAlignedSize(VkDeviceSize original, VkDeviceSize alignment) {
-		if (alignment == 0) return original;
-		return (original + alignment - 1) & ~(alignment - 1);
-	}
+    // createBuffer — old signature with VkMemoryPropertyFlags + raw VkDeviceMemory.
+    inline void createBuffer(VkDeviceSize          size,
+        VkBufferUsageFlags    usage,
+        VkMemoryPropertyFlags properties,
+        VkBuffer& buffer,
+        VkDeviceMemory& outMemory,
+        Device* device)
+    {
+        VmaMemoryUsage          memUsage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
+        VmaAllocationCreateFlags allocFlags = 0;
 
-	// Give any Vulkan object a debug name for RenderDoc / Nsight / validation layers
-	inline void SetObjectName(VkDevice device, uint64_t objectHandle, VkObjectType objectType, const std::string& name)
-	{
-		if (name.empty()) return; // skip unnamed
-		if (!device) return;
+        if (properties & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) {
+            memUsage = VMA_MEMORY_USAGE_AUTO;
+            allocFlags |= VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
+        }
+        if (properties & VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT)
+            memUsage = VMA_MEMORY_USAGE_GPU_LAZILY_ALLOCATED;
 
-		VkDebugUtilsObjectNameInfoEXT nameInfo{};
-		nameInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT;
-		nameInfo.objectType = objectType;
-		nameInfo.objectHandle = objectHandle;
-		nameInfo.pObjectName = name.c_str();
+        Allocation alloc;
+        createBuffer(size, usage, memUsage, allocFlags, buffer, alloc, device);
 
-		// Look up the function pointer (it�s an extension function)
-		auto func = (PFN_vkSetDebugUtilsObjectNameEXT)vkGetDeviceProcAddr(device, "vkSetDebugUtilsObjectNameEXT");
-		if (func)
-			func(device, &nameInfo);
-	}
+        outMemory = alloc.info.deviceMemory;
 
+        // Store in the legacy table so DestroyLegacyBuffer works correctly.
+        Allocator::RegisterLegacyBuffer(buffer, alloc);
+    }
 
-	//========================= FOR CUBEMAPS (Replace old ones with this eventually) =====================================
+    // createImage — old 9/10-arg signature with VkMemoryPropertyFlags + raw VkDeviceMemory.
+    inline void createImage(uint32_t              width,
+        uint32_t              height,
+        VkFormat              format,
+        VkImageTiling         tiling,
+        VkImageUsageFlags     usage,
+        VkMemoryPropertyFlags /*properties*/,   // ignored — VMA decides
+        VkImage& image,
+        VkDeviceMemory& outMemory,
+        Device* device,
+        uint32_t              arrayLayers = 1)
+    {
+        VkImageCreateInfo ici{ VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
+        ici.imageType = VK_IMAGE_TYPE_2D;
+        ici.extent = { width, height, 1 };
+        ici.mipLevels = 1;
+        ici.arrayLayers = arrayLayers;
+        ici.format = format;
+        ici.tiling = tiling;
+        ici.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        ici.usage = usage;
+        ici.samples = VK_SAMPLE_COUNT_1_BIT;
+        ici.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-	// create image (2D or Cubemap)
-	void createImage(
-		const VkImageCreateInfo& info,
-		VkMemoryPropertyFlags properties,
-		VkImage& image,
-		VkDeviceMemory& memory,
-		Device* device
-	);
+        Allocation alloc;
+        createImage(ici, image, alloc, device);
 
-	// Generic view creator (2D / 3D / Cube)
-	VkImageView createImageView(
-		VkImage image,
-		VkFormat format,
-		VkImageAspectFlags aspectFlags,
-		uint32_t mipLevels,
-		uint32_t layers,
-		VkImageViewType viewType,
-		Device* device
-	);
+        outMemory = alloc.info.deviceMemory;
+        Allocator::RegisterLegacyImage(image, alloc);
+    }
 
-	void transitionImageLayout(
-		VkImage image,
-		VkFormat format,
-		VkImageLayout oldLayout,
-		VkImageLayout newLayout,
-		uint32_t mipLevels,
-		uint32_t layers,
-		Device* device,
-		VkCommandPool* CommandPool
-	);
+    // =========================================================================
+    //  Debug naming (no-op in release / when extension is absent)
+    // =========================================================================
+    inline void SetObjectName(VkDevice           device,
+        uint64_t           handle,
+        VkObjectType       type,
+        const std::string& name)
+    {
+#ifdef VK_EXT_debug_utils
+        static auto pfn = reinterpret_cast<PFN_vkSetDebugUtilsObjectNameEXT>(
+            vkGetDeviceProcAddr(device, "vkSetDebugUtilsObjectNameEXT"));
 
-	void copyBufferToImage(
-		VkBuffer buffer,
-		VkImage image,
-		uint32_t width,
-		uint32_t height,
-		uint32_t layers,
-		Device* device,
-		VkCommandPool* CommandPool
-	);
+        if (!pfn || name.empty()) return;
 
-	// Mipmap generator
-	void generateMipmaps(
-		VkImage image,
-		VkFormat format,
-		int32_t texWidth,
-		int32_t texHeight,
-		uint32_t mipLevels,
-		uint32_t layerCount,
-		Device* device,
-		VkCommandPool* CommandPool
-	);
-}
+        VkDebugUtilsObjectNameInfoEXT info{
+            VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT };
+        info.objectType = type;
+        info.objectHandle = handle;
+        info.pObjectName = name.c_str();
+        pfn(device, &info);
+#endif
+    }
+
+} // namespace Simple3D

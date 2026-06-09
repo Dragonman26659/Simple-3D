@@ -2,7 +2,6 @@
 #include "SimpleCore.h"
 #include "Device.h"
 #include "Tools.h"
-#include <vendor/Stb/stb_image.h>
 
 
 namespace Simple3D {

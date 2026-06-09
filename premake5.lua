@@ -39,6 +39,7 @@ project "Simple-3D"
         "vendor/SDL/include",
         "vendor/Vulkan/Include",
         "vendor/Vulkan/Source/SPIRV-Reflect",
+        "vendor/VMA/include",
         "vendor/glm",
         "vendor/ImGui"
     }
@@ -68,6 +69,16 @@ project "Simple-3D"
 
     filter { "options:use-imgui" }
         defines { "USEIMGUI" }
+
+    filter "configurations:Debug"
+        defines { "DEBUG" }
+        symbols "On"
+        runtime "Debug"
+
+    filter "configurations:Release"
+        defines { "NDEBUG" }
+        optimize "On"
+        runtime "Release"
 
 project "GLFW-Example"
     location '%{prj.name}'
@@ -100,6 +111,7 @@ project "GLFW-Example"
         "vendor/Vulkan/Include",
         "vendor/Vulkan/Source/SPIRV-Reflect",
         "vendor/TinyObjLoader/Include",
+        "vendor/VMA/include",
         "vendor/glm",
         "vendor/ImGui"
     }
@@ -116,12 +128,14 @@ project "GLFW-Example"
     }
 
     filter "configurations:Debug"
-        defines {"DEBUG"}
+        defines { "DEBUG" }
         symbols "On"
+        runtime "Debug"
 
     filter "configurations:Release"
-        defines {"NDEBUG"}
-        symbols "On"
+        defines { "NDEBUG" }
+        optimize "On"
+        runtime "Release"
 
     filter "system:windows"
         cppdialect "C++17"
@@ -165,6 +179,7 @@ project "SDL-Example"
         "Simple-3D/include",
         "vendor/SDL/include",
         "vendor/Vulkan/Include",
+        "vendor/VMA/include",
         "vendor/Vulkan/Source/SPIRV-Reflect",
         "vendor/TinyObjLoader/Include",
         "vendor/glm",
@@ -182,12 +197,14 @@ project "SDL-Example"
     }
 
     filter "configurations:Debug"
-        defines {"DEBUG"}
+        defines { "DEBUG" }
         symbols "On"
+        runtime "Debug"
 
     filter "configurations:Release"
-        defines {"NDEBUG"}
-        symbols "On"
+        defines { "NDEBUG" }
+        optimize "On"
+        runtime "Release"
 
     -- Add feature-specific defines
     filter { "options:use-sdl" }

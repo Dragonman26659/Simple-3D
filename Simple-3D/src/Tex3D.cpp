@@ -1,6 +1,6 @@
 #pragma once
 #include "Internal/Tex3D.h"
-
+#include <vendor/Stb/stb_image.h>
 
 namespace Simple3D {
     TextureCube::TextureCube(Device& dev,
@@ -105,7 +105,7 @@ namespace Simple3D {
         info.samples = VK_SAMPLE_COUNT_1_BIT;
         info.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
 
-        createImage(info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, image, memory, device);
+        createImage(width, height, format, VK_IMAGE_TILING_OPTIMAL, info.usage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, image, memory, device);
     }
 
     // ------------------------------

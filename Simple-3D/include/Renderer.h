@@ -1,8 +1,5 @@
-#pragma once
+﻿#pragma once
 #include "SimpleCore.h"
-
-
-// Simple 3D
 
 // Internal
 #include "Internal/Device.h"
@@ -11,443 +8,278 @@
 #include "Internal/DepthBuffer.h"
 #include "Internal/RenderTexture.h"
 #include "Internal/RenderGraph.h"
+#include "Internal/Allocator.h"
 
+// Ray tracing
+#include "Internal/RTcontext.h"    // RayTracingContext, BLAS, TLAS, TLASInstance
+#include "Internal/RT/RTModel.h"   // BuildBLAS, RefitBLAS, DestroyBLAS
 
 // Components
 #include "Component/Renderable/Model.h"
 #include "Component/Tools/Camera.h"
 #include "Component/Tools/Lights.h"
 #include "Internal/Tex3D.h"
+#include "Internal/JobSystem.h"
 
 // RenderPasses
 #include "Internal/RenderPasses/GeometryPass.h"
 
-
-
-
-
 namespace Simple3D {
-	class Renderer {
-	public:
-		// Changes based on if you use SDL or GLFW for windowing
+
+    class Renderer {
+    public:
+
+        // ── Platform-specific constructor (SDL) ──────────────────────────────────────
 #ifdef SDL_WINDOW
-		Renderer(SDL_Window* window, std::string EngineName, std::string ApplicationName, bool useValidation = true)
-			: window(window), VALIDATION_LAYERS_ENABLED(useValidation) {
-			// Get Information from window
-			int width, height;
-			SDL_GetWindowSize(window, &width, &height);
-			// Get required extensions from SDL
+        Renderer(SDL_Window* window,
+            std::string EngineName,
+            std::string ApplicationName,
+            bool        useValidation = true)
+            : window(window), VALIDATION_LAYERS_ENABLED(useValidation)
+        {
+            int width, height;
+            SDL_GetWindowSize(window, &width, &height);
 
-			// Step 1: Query the number of extensions needed
-			if (!SDL_Vulkan_GetInstanceExtensions(window, &WindowExtensionCount, nullptr)) {
-				SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
-					"Failed to get Vulkan extension count: %s",
-					SDL_GetError());
-				throw std::runtime_error("Failed to get Vulkan extension count");
-			}
+            if (!SDL_Vulkan_GetInstanceExtensions(window, &WindowExtensionCount, nullptr))
+                throw std::runtime_error("Failed to get Vulkan extension count");
 
-			// Step 2: Allocate array and get extensions
-			WindowExtensions = new const char* [WindowExtensionCount];
-			if (!SDL_Vulkan_GetInstanceExtensions(window, &WindowExtensionCount, WindowExtensions)) {
-				SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
-					"Failed to get Vulkan extensions: %s",
-					SDL_GetError());
-				delete[] WindowExtensions;
-				throw std::runtime_error("Failed to get Vulkan extensions");
-			}
+            WindowExtensions = new const char* [WindowExtensionCount];
+            if (!SDL_Vulkan_GetInstanceExtensions(window, &WindowExtensionCount, WindowExtensions))
+            {
+                delete[] WindowExtensions;
+                throw std::runtime_error("Failed to get Vulkan extensions");
+            }
 
-			// Create Instance
-			CreateInstance(EngineName, ApplicationName);
+            CreateInstance(EngineName, ApplicationName);
 
-			// Create Window Surface
-			if (!SDL_Vulkan_CreateSurface(window, instance, &surface)) {
-				printf("failed to create window surface!");
-				throw std::runtime_error("failed to create window surface!");
-			}
+            if (!SDL_Vulkan_CreateSurface(window, instance, &surface))
+                throw std::runtime_error("failed to create window surface!");
 
-			// Create device & swapchain
-			RenderDevice = new Device(instance, surface);
-			swapChain = new SwapChain(*RenderDevice, surface, width, height);
+            RenderDevice = new Device(instance, surface);
+            swapChain = new SwapChain(*RenderDevice, surface, width, height);
 
-			// Create render pass
-			CreateRenderPass();
+            Allocator::Init(instance,
+                RenderDevice->getPhysicalDevice(),
+                RenderDevice->getLogicalDevice());
 
-			// Create Command Buffers
-			createCommandPool();
+            CreateRenderPass();
+            createCommandPool();
+            createFramebuffers();
+            createCommandBuffer();
+            createSyncObjects();
 
-			// Create frame buffers
-			createFramebuffers();
+            lastWidth = width;
+            lastHeight = height;
+        }
 
-			createCommandBuffer();
+        int  GetWindowWidth() { int w; SDL_GetWindowSize(window, &w, nullptr);  return w; }
+        int  GetWindowHeight() { int h; SDL_GetWindowSize(window, nullptr, &h);  return h; }
+        bool isMinimised() { return (SDL_GetWindowFlags(window) & SDL_WINDOW_MINIMIZED) != 0; }
 
-			// Create sync objects
-			createSyncObjects();
+    private:
+        SDL_Window* window;
+    public:
 
-			lastWidth = width;
-			lastHeight = height;
-		}
+        // ── Platform-specific constructor (GLFW) ─────────────────────────────────────
+#else
+        Renderer(GLFWwindow* window,
+            std::string EngineName,
+            std::string ApplicationName)
+            : window(window)
+        {
+            int width, height;
+            glfwGetFramebufferSize(window, &width, &height);
 
-		int GetWindowWidth() {
-			int width;
-			SDL_GetWindowSize(window, &width, nullptr);
-			return width;
-		}
+            WindowExtensions = glfwGetRequiredInstanceExtensions(&WindowExtensionCount);
 
-		int GetWindowHeight() {
-			int height;
-			SDL_GetWindowSize(window, nullptr, &height);
-			return height;
-		}
+            CreateInstance(EngineName, ApplicationName);
 
-		bool isMinimised() {
-			return (SDL_GetWindowFlags(window) & SDL_WINDOW_MINIMIZED) != 0;
-		}
+            if (glfwCreateWindowSurface(instance, window, nullptr, &surface) != VK_SUCCESS)
+                throw std::runtime_error("Failed to create window surface!");
 
-	private:
-		SDL_Window* window;
-	public:
-#else // ---------- GLFW WINDOWING ----------
+            RenderDevice = new Device(instance, surface);
+            swapChain = new SwapChain(*RenderDevice, surface, width, height);
 
-		Renderer(GLFWwindow* window, std::string EngineName, std::string ApplicationName)
-			: window(window)
-		{
-			int width, height;
-			glfwGetFramebufferSize(window, &width, &height);
+            Allocator::Init(instance,
+                RenderDevice->getPhysicalDevice(),
+                RenderDevice->getLogicalDevice());
 
-			WindowExtensions = glfwGetRequiredInstanceExtensions(&WindowExtensionCount);
+            CreateRenderPass();
+            createCommandPool();
+            depthBuffer = new DepthBuffer(RenderDevice, swapChain, &commandPool);
+            createFramebuffers();
+            createCommandBuffer();
+            createSyncObjects();
 
-			CreateInstance(EngineName, ApplicationName);
+            lastWidth = width;
+            lastHeight = height;
+        }
 
-			if (glfwCreateWindowSurface(instance, window, nullptr, &surface) != VK_SUCCESS) {
-				throw std::runtime_error("Failed to create window surface!");
-			}
+        int  GetWindowWidth() { int w; glfwGetFramebufferSize(window, &w, nullptr); return w; }
+        int  GetWindowHeight() { int h; glfwGetFramebufferSize(window, nullptr, &h); return h; }
+        bool isMinimised() { return glfwGetWindowAttrib(window, GLFW_ICONIFIED) != 0; }
 
-			RenderDevice = new Device(instance, surface);
-			swapChain = new SwapChain(*RenderDevice, surface, width, height);
+        bool WindowResized()
+        {
+            int cw, ch;
+            glfwGetFramebufferSize(window, &cw, &ch);
+            if (cw != lastWidth || ch != lastHeight) { lastWidth = cw; lastHeight = ch; return true; }
+            return false;
+        }
 
-			CreateRenderPass();
-			createCommandPool();
-			depthBuffer = new DepthBuffer(RenderDevice, swapChain, &commandPool);
-			createFramebuffers();
-			createCommandBuffer();
-			createSyncObjects();
-
-			lastWidth = width;
-			lastHeight = height;
-		}
-
-		int GetWindowWidth() {
-			int width;
-			glfwGetFramebufferSize(window, &width, nullptr);
-			return width;
-		}
-
-		int GetWindowHeight() {
-			int height;
-			glfwGetFramebufferSize(window, nullptr, &height);
-			return height;
-		}
-
-		bool isMinimised() {
-			return glfwGetWindowAttrib(window, GLFW_ICONIFIED);
-		}
-
-		bool WindowResized() {
-			int width, height;
-			glfwGetFramebufferSize(window, &width, &height);
-			if (width != lastWidth || height != lastHeight) {
-				lastWidth = width;
-				lastHeight = height;
-				return true;
-			}
-			return false;
-		}
-
-	private:
-		GLFWwindow* window;
-	public:
+    private:
+        GLFWwindow* window;
+    public:
 #endif
 
+        ~Renderer();
 
+        // ── Frame ─────────────────────────────────────────────────────────────────
+        void Render(RenderData& data);
+        void WaitToFinish();
+        void WindoResize();
+        void RecreateSwapChain();
 
-		~Renderer();
+        // ── Resources ─────────────────────────────────────────────────────────────
+        Material* CreateMaterial(MaterialInfo info);
+        ShaderSet* CreateShaderSet(std::string name);
+        RenderGraph* CreateRenderGraph(std::string name);
+        void           BuildRenderGraphs();
+        void           BuildGraph(RenderGraph* graph);
+        TextureBinding CreateTexture(std::string filepath);
+        TextureCube* CreateTextureCube(std::vector<std::string> filepath);
+        RenderTexture* CreateRenderTexture(int width, int height);
+        RenderTexture* CreateRenderTexture(int width, int height, VkFormat format);
+        DepthBuffer* CreateDepth(RenderTarget target);
+        DepthBuffer* CreateDepth(VkExtent2D extent);
 
+        void RegisterJobSystem(IJobSystem* js) { jobSystem = js; }
 
-		void Render(RenderData& data);
-		void WaitToFinish();
-		void WindoResize();
+        // ── Accessors ─────────────────────────────────────────────────────────────
+        SwapChain* GetSwapChain() { return swapChain; }
+        Device* GetDevice() { return RenderDevice; }
+        VkCommandPool* GetCommandPool() { return &commandPool; }
 
-		// In header due to links with preprossessor
-		void RecreateSwapChain();
+        // Returns the raw VmaAllocator so cross-DLL callers can pass it to
+        // Allocator::SetInstance() and share the same allocator instance.
+        VmaAllocator   GetVmaAllocator() { return Allocator::GetRawAllocator(); }
 
-		Material* CreateMaterial(MaterialInfo info);
-		ShaderSet* CreateShaderSet(std::string name);
+        // ── Ray Tracing ───────────────────────────────────────────────────────────
 
+        // Call once after construction if you want RT support.
+        // Returns true if the hardware and driver support VK_KHR_acceleration_structure
+        // + VK_KHR_ray_query.  If false, all RT calls are safely no-ops.
+        bool EnableRayTracing();
 
-		RenderGraph* CreateRenderGraph(std::string name);
-		void BuildRenderGraphs();
-		void BuildGraph(RenderGraph* graph);
+        // Returns false if EnableRayTracing() was never called or hardware lacks support.
+        bool IsRayTracingAvailable() const { return m_RTCtx.IsAvailable(); }
 
-		TextureBinding CreateTexture(std::string filepath);
-		TextureCube* CreateTextureCube(std::vector<std::string> filepath);
+        // Access the context for advanced use (e.g. querying feature flags).
+        const RayTracingContext& GetRTContext() const { return m_RTCtx; }
+        RayTracingContext& GetRTContext() { return m_RTCtx; }
 
-		// Dosent expose vulkan directly but alows for renderTargets to be made
-		SwapChain* GetSwapChain() { return swapChain; }
-		Device* GetDevice() { return RenderDevice; }
-		VkCommandPool* GetCommandPool() { return &commandPool; }
+        // Build a BLAS for a model.  The model's buffers must already be created.
+        // allowUpdate=true adds ALLOW_UPDATE so the BLAS can be refitted later.
+        // Returns an invalid (default) BLAS if RT is unavailable.
+        BLAS BuildModelBLAS(Model& model, bool allowUpdate = false);
 
-		RenderTexture* CreateRenderTexture(int width, int height);
-		RenderTexture* CreateRenderTexture(int width, int height, VkFormat format);
-		DepthBuffer* CreateDepth(RenderTarget target);
-		DepthBuffer* CreateDepth(VkExtent2D extent);
+        // Update a BLAS in-place after vertex positions change (dynamic meshes).
+        // The BLAS must have been built with allowUpdate=true.
+        void RefitModelBLAS(BLAS& blas, Model& model);
 
-		bool VALIDATION_LAYERS_ENABLED = true;
+        // Destroy a BLAS and free its backing buffer.
+        void DestroyModelBLAS(BLAS& blas);
 
+        // Build / rebuild a TLAS from a list of instances.
+        // If tlas.IsValid() the previous TLAS is destroyed first.
+        void BuildSceneTLAS(TLAS& tlas, const std::vector<TLASInstance>& instances);
+
+        // Destroy a TLAS.
+        void DestroySceneTLAS(TLAS& tlas);
+
+        // ── Validation ────────────────────────────────────────────────────────────
+        bool VALIDATION_LAYERS_ENABLED = true;
+
+        // ── ImGui (optional) ─────────────────────────────────────────────────────────
 #ifdef USEIMGUI
-		// Returns all needed information to be able to use Imgui
-		ImGui_ImplVulkan_InitInfo GetImGUIinfo() {
-			ImGui_ImplVulkan_InitInfo info = {};
-
-			// Create separate pool for ImGui
-			VkDescriptorPoolSize pool_sizes[] = {
-				{ VK_DESCRIPTOR_TYPE_SAMPLER, 1000 },
-				{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000 },
-				{ VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1000 },
-				{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1000 },
-				{ VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 1000 },
-				{ VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, 1000 },
-				{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1000 },
-				{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1000 },
-				{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1000 },
-				{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1000 },
-				{ VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1000 }
-			};
-
-			VkDescriptorPoolCreateInfo pool_info = {};
-			pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-			pool_info.maxSets = 1000;
-			pool_info.poolSizeCount = std::size(pool_sizes);
-			pool_info.pPoolSizes = pool_sizes;
-			pool_info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
-
-			vkCreateDescriptorPool(RenderDevice->getLogicalDevice(), &pool_info, nullptr, &imguiPool);
-
-			info.Instance = instance;
-			info.PhysicalDevice = RenderDevice->getPhysicalDevice();
-			info.Device = RenderDevice->getLogicalDevice();
-			info.QueueFamily = RenderDevice->findQueueFamilies().graphicsFamily.value();
-			info.Queue = RenderDevice->getVKgraphicsQueue();
-			info.DescriptorPool = imguiPool;
-			info.MinImageCount = swapChain->getImageViews().size();
-			info.ImageCount = info.MinImageCount;
-			info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
-			info.RenderPass = renderPass;
-
-			info.PipelineRenderingCreateInfo = {};
-			info.PipelineRenderingCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
-			info.PipelineRenderingCreateInfo.colorAttachmentCount = 1;
-			info.PipelineRenderingCreateInfo.pColorAttachmentFormats = &swapChain->GetSwapChainImageFormat();
-
-			return info;
-		}
-
-		bool NewImguiframe() {
-			if (isMinimised())
-				return false;
-
-
-			// Begin new frame
-			ImGui_ImplVulkan_NewFrame();
-
-			// Platform newFrame
-#ifdef SDL_WINDOW
-			ImGui_ImplSDL2_NewFrame();
-#else
-			ImGui_ImplGlfw_NewFrame();
-#endif // SDL_WINDOW
-
-			ImGui::NewFrame();
-
-			return true;
-		}
-
-
-
-		void drawImgui(VkCommandBuffer cmd, uint32_t imageIndex) {
-			if (!usingImgui)
-				return;
-
-			// 1. Early validation
-			if (cmd == VK_NULL_HANDLE) {
-				// Log error: Invalid command buffer
-				return;
-			}
-
-			if (ImGui::GetCurrentContext() == nullptr) {
-				// Log error: Context not initialized
-				return;
-			}
-
-			ImDrawData* draw_data = ImGui::GetDrawData();
-			if (draw_data == nullptr) {
-				// Log warning: No draw data to render
-				return;
-			}
-
-			try {
-				// 7. Render ImGui
-				ImGui_ImplVulkan_RenderDrawData(draw_data, cmd);
-			}
-			catch (...) {
-				return;
-			}
-		}
-
-		void initImgui(std::function<void(ImGuiStyle&)> styleConfig = nullptr) {
-			// 1. Create ImGui context
-			IMGUI_CHECKVERSION();
-			ImGui::CreateContext();
-
-			// 2. Configure ImGui IO settings
-			ImGuiIO& io = ImGui::GetIO();
-			io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
-			io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
-			io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;         // Enable Docking
-
-			// 3. Initialize platform backend
-#ifdef SDL_WINDOW
-			ImGui_ImplSDL2_InitForVulkan(window);
-#else
-			ImGui_ImplGlfw_InitForVulkan(window);
+        ImGui_ImplVulkan_InitInfo GetImGUIinfo();
+        bool          NewImguiframe();
+        void          drawImgui(VkCommandBuffer cmd, uint32_t imageIndex);
+        void          initImgui(std::function<void(ImGuiStyle&)> styleConfig = nullptr);
+        bool          usingImgui = false;
+    private:
+        VkDescriptorPool imguiPool = VK_NULL_HANDLE;
+    public:
 #endif
 
-			// 4. Initialize Vulkan backend
-			ImGui_ImplVulkan_InitInfo init_info = GetImGUIinfo();
-			init_info.PipelineCache = nullptr;
-			init_info.Allocator = nullptr;
-			init_info.MinImageCount = swapChain->getImageViews().size();
-			init_info.ImageCount = init_info.MinImageCount;
-			init_info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
+    private:
+        // ── Vulkan core ───────────────────────────────────────────────────────────
+        VkInstance               instance = VK_NULL_HANDLE;
+        VkDebugUtilsMessengerEXT debugMessenger = VK_NULL_HANDLE;
+        VkSurfaceKHR             surface = VK_NULL_HANDLE;
 
-			// Apply custom style configuration if provided
-			if (styleConfig != nullptr) {
-				styleConfig(ImGui::GetStyle());
-			}
-			else {
-				// Default style configuration
-				ImGui::StyleColorsDark();
-			}
+        VkCommandPool                commandPool;
+        std::vector<VkCommandBuffer> commandBuffers;
 
-			// Initialize Vulkan backend
-			ImGui_ImplVulkan_Init(&init_info);
+        std::vector<VkSemaphore> imageAvailableSemaphores;
+        std::vector<VkSemaphore> renderFinishedSemaphores;
+        std::vector<VkFence>     inFlightFences;
 
-			usingImgui = true;
-		}
+        VkRenderPass renderPass = VK_NULL_HANDLE;
+        VkRenderPass ClearRenderPass = VK_NULL_HANDLE;
 
+        std::vector<VkFramebuffer> swapChainFramebuffers;
 
-		bool usingImgui = false;
+        Device* RenderDevice = nullptr;
+        SwapChain* swapChain = nullptr;
+        DepthBuffer* depthBuffer = nullptr;   // GLFW path only
 
-	private:
-		// DescriptorPool for Imgui
-		VkDescriptorPool imguiPool;
-	public:
+        IJobSystem* jobSystem = nullptr;
 
-#endif // USEIMGUI
+        const char** WindowExtensions = nullptr;
+        uint32_t     WindowExtensionCount = 0;
+        uint32_t     currentFrame = 0;
+        int          lastWidth = 0;
+        int          lastHeight = 0;
 
-	private:
-		// Vulkan Instance
-		VkInstance instance;
+        std::vector<RenderGraph*>    RenderGraphs;
+        std::vector<RenderTexture*>  RenderTextures;
+        std::vector<ShaderSet*>      shaders;
 
-		// Debug messenger (for validation layers)
-		VkDebugUtilsMessengerEXT debugMessenger;
+        // ── Ray Tracing ───────────────────────────────────────────────────────────
+        RayTracingContext m_RTCtx;
+        bool              m_RTEnabled = false;
 
-		// Vulkan surface
-		VkSurfaceKHR surface;
+        // ── Private helpers ───────────────────────────────────────────────────────
+        void CreateInstance(std::string EngineName, std::string ApplicationName);
+        void createCommandPool();
+        void createCommandBuffer();
+        void recordCommandBuffer(VkCommandBuffer cmd,
+            uint32_t        syncIndex,
+            uint32_t        imageIndex,
+            RenderData& data);
+        void createSyncObjects();
+        void setupDebugMessenger();
+        void DestroyDebugUtilsMessengerEXT(VkInstance                   instance,
+            VkDebugUtilsMessengerEXT     debugMessenger,
+            const VkAllocationCallbacks* pAllocator);
+        std::vector<const char*> getRequiredExtensions();
+        bool checkValidationLayerSupport();
+        void CreateRenderPass();
+        void createFramebuffers();
+        void cleanupSwapChain();
 
-		// Command pool + buffer
-		VkCommandPool commandPool;
-		std::vector<VkCommandBuffer> commandBuffers;
-
-
-		// Vulkan sync objects
-		std::vector<VkSemaphore> imageAvailableSemaphores;
-		std::vector<VkSemaphore> renderFinishedSemaphores;
-		std::vector<VkFence> inFlightFences;
-
-		// Render passes
-		VkRenderPass renderPass;
-		VkRenderPass ClearRenderPass;
-
-		// Framebuffer
-		std::vector<VkFramebuffer> swapChainFramebuffers;
-
-		// Device and swapchain(ik useful comment)
-		Device* RenderDevice;
-		SwapChain* swapChain;
-
-
-
-
-		// Information gathered from windows
-		const char** WindowExtensions;
-		uint32_t WindowExtensionCount = 0;
-
-		// Store the current frame we are on
-		uint32_t currentFrame = 0;
-
-		// Models and lights
-		std::vector<RenderGraph*> RenderGraphs;
-		std::vector<RenderTexture*> RenderTextures;
-		std::vector<ShaderSet*> shaders;
-
-		// Create instance
-		void CreateInstance(std::string EngineName, std::string ApplicationName);
-
-		// Create command pool and command buffer
-		void createCommandPool();
-		void createCommandBuffer();
-
-		// Command buffer recording -- In header due to references to preprossessor
-		void recordCommandBuffer(VkCommandBuffer cmd, uint32_t syncIndex, uint32_t imageIndex, RenderData& data);
-
-		// Sync objects
-		void createSyncObjects();
-
-		// Debug info
-		void setupDebugMessenger();
-		void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT debugMessenger, const VkAllocationCallbacks* pAllocator);
-
-		// Initalise Vulkan
-		std::vector<const char*> getRequiredExtensions();
-		bool checkValidationLayerSupport();
-
-		// Parts that are not large enough for there own class but probably should be
-		void CreateRenderPass();
-		void createFramebuffers();
-
-		// Clean up all objects related to swapchain
-		void cleanupSwapChain();
-
-		int lastWidth = 0;
-		int lastHeight = 0;
-
-		bool WindowResized() {
-			int currentWidth = 0, currentHeight = 0;
-
+        bool WindowResized()
+        {
+            int cw = 0, ch = 0;
 #ifdef SDL_WINDOW
-			SDL_GetWindowSize(window, &currentWidth, &currentHeight);
+            SDL_GetWindowSize(window, &cw, &ch);
 #else
-			glfwGetFramebufferSize(window, &currentWidth, &currentHeight);
+            glfwGetFramebufferSize(window, &cw, &ch);
 #endif
+            if (cw != lastWidth || ch != lastHeight) { lastWidth = cw; lastHeight = ch; return true; }
+            return false;
+        }
+    };
 
-			// Check if the size actually changed
-			if (currentWidth != lastWidth || currentHeight != lastHeight) {
-				lastWidth = currentWidth;
-				lastHeight = currentHeight;
-				return true;
-			}
-
-			return false;
-		}
-	};
-}
+} // namespace Simple3D

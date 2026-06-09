@@ -200,7 +200,8 @@ namespace Simple3D {
 	}
 
 	bool RenderTexture::resize(int nwidth, int nheight) {
-		width, height = nwidth, nheight;
+		width = nwidth;
+		height = nheight;
 		cleanup();
 
 		if (width <= 0 || height <= 0) {

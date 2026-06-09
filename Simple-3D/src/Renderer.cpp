@@ -138,7 +138,7 @@ namespace Simple3D {
 
 		// Render All Render to texture instances
 		for (RenderGraph* graph : RenderGraphs) {
-			graph->Execute(cmd, data, imageIndex, syncIndex);
+			graph->Execute(cmd, data, imageIndex, syncIndex, jobSystem);
 			haveRendered = true;
 		}
 
@@ -406,6 +406,8 @@ namespace Simple3D {
 		if (enableValidationLayers && VALIDATION_LAYERS_ENABLED) {
 			DestroyDebugUtilsMessengerEXT(instance, debugMessenger, nullptr);
 		}
+
+		Allocator::Shutdown();
 
 		// Cleanup instance
 		vkDestroyInstance(instance, nullptr);

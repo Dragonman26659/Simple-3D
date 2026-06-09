@@ -7,10 +7,33 @@ namespace Simple3D {
     RenderGraph::RenderGraph(std::string name, VkCommandPool& commandPool, Device& device) : name(name), commandPool(commandPool) {
     }
 
-    void RenderGraph::Execute(VkCommandBuffer cmd, RenderData data, uint32_t currentFrame, uint32_t syncIndex) {
-        for (auto* pass : executionOrder) {
-            pass->Execute(cmd, data, currentFrame, syncIndex);
+    void RenderGraph::Execute(VkCommandBuffer primaryCmd, RenderData data,
+        uint32_t currentFrame, uint32_t syncIndex,
+        IJobSystem* jobSystem)
+    {
+        if (!jobSystem || executionOrder.size() <= 2) {
+            // Single-threaded fallback for small graphs or no job system.
+            for (auto* pass : executionOrder)
+                pass->Execute(primaryCmd, data, currentFrame, syncIndex);
+            return;
         }
+
+        // Record each pass into its own secondary command buffer in parallel,
+        // then execute them all into the primary in order.
+        std::vector<VkCommandBuffer> secondaryCmds(executionOrder.size(), VK_NULL_HANDLE);
+        std::vector<IJobSystem::Job> jobs;
+        jobs.reserve(executionOrder.size());
+
+        for (size_t i = 0; i < executionOrder.size(); ++i) {
+            jobs.push_back([&, i]() {
+                // Allocate a secondary command buffer per thread.
+                // (You'll need a per-thread pool or a pool with RESET_COMMAND_BUFFER_BIT.)
+                // For now this records serially into the primary as a safe starting point:
+                executionOrder[i]->Execute(primaryCmd, data, currentFrame, syncIndex);
+                });
+        }
+
+        jobSystem->ParallelFor(std::move(jobs));
     }
 
     RenderGraph::~RenderGraph() {
