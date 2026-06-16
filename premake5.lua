@@ -69,6 +69,17 @@ project "Simple-3D"
     filter { "options:use-imgui" }
         defines { "USEIMGUI" }
 
+
+    filter "configurations:Debug"
+        defines { "DEBUG" }
+        symbols "On"
+        runtime "Debug"
+
+    filter "configurations:Release"
+        defines { "NDEBUG" }
+        optimize "On"
+        runtime "Release"
+
 project "GLFW-Example"
     location '%{prj.name}'
     kind "ConsoleApp"
@@ -136,6 +147,16 @@ project "GLFW-Example"
     filter { "options:use-imgui" }
         defines { "USEIMGUI" }
 
+    filter "configurations:Debug"
+        defines { "DEBUG" }
+        symbols "On"
+        runtime "Debug"
+
+    filter "configurations:Release"
+        defines { "NDEBUG" }
+        optimize "On"
+        runtime "Release"
+
 project "SDL-Example"
     location '%{prj.name}'
     kind "ConsoleApp"
@@ -200,3 +221,13 @@ project "SDL-Example"
         cppdialect "C++17"
         systemversion "latest"
         architecture "x64"
+    
+    filter "configurations:Debug"
+        defines { "DEBUG" }
+        symbols "On"
+        runtime "Debug"
+
+    filter "configurations:Release"
+        defines { "NDEBUG" }
+        optimize "On"
+        runtime "Release"

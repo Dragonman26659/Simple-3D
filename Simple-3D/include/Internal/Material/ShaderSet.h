@@ -35,6 +35,7 @@ namespace Simple3D {
         uint32_t count;
         std::string name;
         VkShaderStageFlags stageFlags = 0;
+        bool IsBindless;
     };
 
     struct PushConstantRange {

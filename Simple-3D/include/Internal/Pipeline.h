@@ -15,6 +15,7 @@ namespace Simple3D {
         VkDescriptorType type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
         uint32_t count = 1;
         VkShaderStageFlags stageFlags = 0;
+        bool IsBindless = false;
 
         std::vector<VkBuffer> buffers;
         std::vector<VkDeviceMemory> bufferMemories;         
@@ -25,6 +26,8 @@ namespace Simple3D {
         VkImageView imageView = VK_NULL_HANDLE;
         VkSampler sampler = VK_NULL_HANDLE;
         VkImageLayout imageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+        std::vector<VkDescriptorImageInfo> imageArray;
     };
 
 
@@ -95,6 +98,8 @@ namespace Simple3D {
         void BindData(const std::string& name, const void* data, size_t size, uint32_t arrayIndex = 0);
         void BindData(const std::string& name, const VkDescriptorImageInfo& imgInfo, uint32_t arrayIndex = 0);
         void BindMaterial(VkCommandBuffer cmd, Material& material, uint32_t frameIndex);
+        void BindTextureArray(const std::string& name, const std::vector<VkDescriptorImageInfo>& images);
+        void BindExternalDescriptorSet(VkCommandBuffer cmd, const std::string& bindingName, VkDescriptorSet set);
 
 
         // Binding per object Data

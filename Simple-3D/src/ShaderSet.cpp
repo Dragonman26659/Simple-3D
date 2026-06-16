@@ -133,13 +133,17 @@ namespace Simple3D {
                     uint32_t setIndex = set->set;
                     uint32_t bindingIndex = b->binding;
 
+                    bool isBindless = (b->count == 0);
+                    uint32_t count = isBindless ? MAX_BINDLESS : b->count;
+
                     descriptorSets[setIndex].push_back({
                         bindingIndex,
                         setIndex,
                         SpvToVkDescriptorType(b->descriptor_type),
-                        b->count,
+                        count,
                         std::string(b->name && b->name[0] != '\0' ? b->name : "UNKNOWN_BINDING"),
-                        stageFlag
+                        stageFlag,
+                        isBindless
                         });
                 }
             }
@@ -249,6 +253,7 @@ namespace Simple3D {
 
         for (auto& [set, bindings] : descriptorSets) {
             std::vector<VkDescriptorSetLayoutBinding> vkBindings;
+            bool hadBindless = false;
             for (auto& b : bindings) {
                 VkDescriptorSetLayoutBinding layoutBinding{};
                 layoutBinding.binding = b.binding;
@@ -257,11 +262,35 @@ namespace Simple3D {
                 layoutBinding.stageFlags = b.stageFlags;
                 layoutBinding.pImmutableSamplers = nullptr;
                 vkBindings.push_back(layoutBinding);
+
+                if (b.IsBindless) {
+                    hadBindless = true;
+                }
             }
 
             VkDescriptorSetLayoutCreateInfo layoutInfo{ VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
             layoutInfo.bindingCount = static_cast<uint32_t>(vkBindings.size());
             layoutInfo.pBindings = vkBindings.data();
+
+            // Configure layout if we have bindless
+            if (hadBindless) {
+                layoutInfo.flags |= VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
+
+                std::vector<VkDescriptorBindingFlags> bindingFlags(vkBindings.size(), 0);
+                for (size_t i = 0; i < bindings.size(); ++i) {
+                    if (bindings[i].IsBindless) {
+                        bindingFlags[i] = VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT
+                            | VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT
+                            | VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT;
+                    }
+                }
+
+                VkDescriptorSetLayoutBindingFlagsCreateInfo flagsInfo{};
+                flagsInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO;
+                flagsInfo.bindingCount = static_cast<uint32_t>(bindingFlags.size());
+                flagsInfo.pBindingFlags = bindingFlags.data();
+                layoutInfo.pNext = &flagsInfo;
+            }
 
             VkDescriptorSetLayout layout;
             if (vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &layout) != VK_SUCCESS) {

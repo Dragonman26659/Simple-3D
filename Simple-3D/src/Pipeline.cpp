@@ -170,6 +170,17 @@ namespace Simple3D {
         bindInfo.imageLayout = imgInfo.imageLayout;
     }
 
+    void Pipeline::BindTextureArray(const std::string& name,
+        const std::vector<VkDescriptorImageInfo>& images) {
+        auto it = bindings.find(name);
+        if (it == bindings.end())
+            throw std::runtime_error("Binding not found: " + name);
+        if (!it->second.IsBindless)
+            throw std::runtime_error("BindTextureArray called on non-bindless binding: " + name);
+
+        it->second.imageArray = images;
+    }
+
     void Pipeline::UpdateDescriptors(uint32_t frameIndex) {
         std::vector<VkWriteDescriptorSet> descriptorWrites;
         std::vector<VkDescriptorBufferInfo> bufferInfos;
@@ -180,6 +191,20 @@ namespace Simple3D {
         imageInfos.reserve(bindings.size());
 
         for (auto& [name, binding] : bindings) {
+            if (binding.IsBindless) {
+                if (binding.imageArray.empty()) continue;
+
+                VkWriteDescriptorSet write{ VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
+                write.dstSet = descriptorSets[frameIndex][binding.set];
+                write.dstBinding = binding.binding;
+                write.dstArrayElement = 0;
+                write.descriptorType = binding.type;
+                write.descriptorCount = static_cast<uint32_t>(binding.imageArray.size());
+                write.pImageInfo = binding.imageArray.data();
+                descriptorWrites.push_back(write);
+                continue;
+            }
+
             VkDescriptorSet dstSet = descriptorSets[frameIndex][binding.set];
 
             VkWriteDescriptorSet write{ VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
@@ -204,7 +229,7 @@ namespace Simple3D {
             }
             else {
                 if (binding.imageView == VK_NULL_HANDLE) continue;
-
+                 
                 VkDescriptorImageInfo iInfo{};
                 iInfo.imageView = binding.imageView;
                 iInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
@@ -239,7 +264,6 @@ namespace Simple3D {
             setLayouts.push_back(layout);
         }
 
-        // prepare descriptorSets as [frame][setCount]
         descriptorSets.resize(MAX_FRAMES_IN_FLIGHT);
         for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
             descriptorSets[i].resize(setLayouts.size());
@@ -247,12 +271,28 @@ namespace Simple3D {
 
         CreateDescriptorPool();
 
+        std::vector<uint32_t> variableCounts(setLayouts.size(), 0);
+        bool anyBindless = false;
+
+        for (const auto& [name, binding] : bindings) {
+            if (binding.IsBindless) {
+                variableCounts[binding.set] = binding.count;
+                anyBindless = true;
+            }
+        }
+
         for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
+            VkDescriptorSetVariableDescriptorCountAllocateInfo varCountInfo{};
+            varCountInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO;
+            varCountInfo.descriptorSetCount = static_cast<uint32_t>(variableCounts.size());
+            varCountInfo.pDescriptorCounts = variableCounts.data();
+
             VkDescriptorSetAllocateInfo alloc{};
             alloc.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
             alloc.descriptorPool = descriptorPool;
             alloc.descriptorSetCount = static_cast<uint32_t>(setLayouts.size());
             alloc.pSetLayouts = setLayouts.data();
+            alloc.pNext = anyBindless ? &varCountInfo : nullptr;
 
             if (vkAllocateDescriptorSets(device->getLogicalDevice(), &alloc, descriptorSets[i].data()) != VK_SUCCESS) {
                 throw std::runtime_error("Failed to allocate descriptor sets!");
@@ -356,7 +396,8 @@ namespace Simple3D {
         // accumulate counts per descriptor type
         std::unordered_map<VkDescriptorType, uint32_t> counts;
         for (auto& [name, binding] : bindings) {
-            counts[binding.type] += binding.count * MAX_FRAMES_IN_FLIGHT;
+            uint32_t multiplier = binding.IsBindless? 1 : MAX_FRAMES_IN_FLIGHT;
+            counts[binding.type] += binding.count * multiplier;
         }
 
         std::vector<VkDescriptorPoolSize> poolSizes;
@@ -373,6 +414,7 @@ namespace Simple3D {
         poolInfo.pPoolSizes = poolSizes.data();
         // total number of descriptor sets (per-frame * number of set layouts)
         poolInfo.maxSets = static_cast<uint32_t>(setLayouts.size() * MAX_FRAMES_IN_FLIGHT);
+        poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT;
 
         if (vkCreateDescriptorPool(device->getLogicalDevice(), &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) {
             throw std::runtime_error("Failed to create descriptor pool for pipeline");
@@ -393,6 +435,7 @@ namespace Simple3D {
                 bi.type = e.type;
                 bi.count = e.count;
                 bi.stageFlags = e.stageFlags;
+                bi.IsBindless = e.IsBindless;
                 bindings[bi.name] = bi;
             }
         }
@@ -456,6 +499,25 @@ namespace Simple3D {
             VK_PIPELINE_BIND_POINT_GRAPHICS,
             layout,
             MATERIAL_SET,
+            1,
+            &set,
+            0,
+            nullptr
+        );
+    }
+
+    void Pipeline::BindExternalDescriptorSet(VkCommandBuffer cmd, const std::string& bindingName, VkDescriptorSet set) {
+        auto it = bindings.find(bindingName);
+        if (it == bindings.end())
+            throw std::runtime_error("Pipeline: binding not found: " + bindingName);
+
+        uint32_t setIndex = it->second.set;
+
+        vkCmdBindDescriptorSets(
+            cmd,
+            VK_PIPELINE_BIND_POINT_GRAPHICS,
+            layout,
+            setIndex,
             1,
             &set,
             0,

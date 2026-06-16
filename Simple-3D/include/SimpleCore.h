@@ -64,6 +64,8 @@ const bool enableValidationLayers = true;
 #include <unordered_set>
 
 
+#define MAX_BINDLESS 4096
+
 
 // Common structs
 struct Vertex {
