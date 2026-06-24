@@ -219,7 +219,23 @@ namespace Simple3D {
         // --- 2. Build Depth Attachment ---
         VkAttachmentReference depthRef{};
         if (hasDepth) {
-            attachments.push_back(target.GetDepthAttachmentDescription());
+            VkImageLayout depthInitialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+            VkAttachmentLoadOp depthLoadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+
+            if (isOverlay) {
+                // TransitionForWrite() already moved this image from
+                // READ_ONLY_OPTIMAL -> ATTACHMENT_OPTIMAL before the render pass
+                // begins. The render pass's own initialLayout has to match that
+                // real layout, or LOAD is allowed to discard the existing depth.
+                depthLoadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+                depthInitialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+            }
+
+            attachments.push_back(target.GetDepthAttachmentDescription(
+                depthInitialLayout,
+                VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
+                depthLoadOp));
+
             depthRef.attachment = static_cast<uint32_t>(attachments.size() - 1);
             depthRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
         }

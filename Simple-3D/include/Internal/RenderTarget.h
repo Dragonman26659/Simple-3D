@@ -109,6 +109,7 @@ namespace Simple3D {
         }
 
         VkAttachmentDescription GetDepthAttachmentDescription(
+            VkImageLayout initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
             VkImageLayout finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
             VkAttachmentLoadOp loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR) const
         {
@@ -118,7 +119,9 @@ namespace Simple3D {
             desc.samples = VK_SAMPLE_COUNT_1_BIT;
             desc.loadOp = loadOp;
             desc.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-            desc.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+            desc.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+            desc.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+            desc.initialLayout = initialLayout;
             desc.finalLayout = finalLayout;
             return desc;
         }

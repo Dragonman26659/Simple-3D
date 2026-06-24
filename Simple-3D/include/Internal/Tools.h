@@ -6,13 +6,13 @@ namespace Simple3D {
 
 	// Binding for each texture
 	struct TextureBinding {
-		VkImageView view;
-		VkSampler sampler;
-		VkDescriptorSet descriptorSet;
+		VkImageView view = VK_NULL_HANDLE;
+		VkSampler sampler = VK_NULL_HANDLE;
+		VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
 
 		// Image + image memory
-		VkImage textureImage;
-		VkDeviceMemory textureImageMemory;
+		VkImage textureImage = VK_NULL_HANDLE;
+		VkDeviceMemory textureImageMemory = VK_NULL_HANDLE;
 
 		int width, height;
 	};
