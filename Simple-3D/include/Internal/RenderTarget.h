@@ -12,6 +12,7 @@ namespace Simple3D {
         SwapChain* swapchain = nullptr;
         std::vector<RenderTexture*> colorAttachments;
         DepthBuffer* depthTexture = nullptr;
+        RenderTarget* depthSource = nullptr; // Lets a rendertarget borrow another targets depth texture
 
         // Shadowmapping Support
         bool isShadowArray = false;
@@ -20,7 +21,7 @@ namespace Simple3D {
         // --- Identification ---
         bool IsSwapchain() const { return swapchain != nullptr; }
         bool IsTexture()   const { return !colorAttachments.empty(); }
-        bool HasDepth()    const { return depthTexture != nullptr; }
+        bool HasDepth() const { return GetDepthBuffer() != nullptr; }
         bool IsValid() const {
             // 1. Cannot be both a swapchain and a custom offscreen color texture list
             if (swapchain != nullptr && !colorAttachments.empty()) {
@@ -69,13 +70,6 @@ namespace Simple3D {
             if (IsSwapchain()) return swapchain->GetSwapChainImageFormat();
             if (index < colorAttachments.size()) return colorAttachments[index]->getFormat();
             return VK_FORMAT_UNDEFINED;
-        }
-
-        VkFormat    GetDepthFormat()    const { return depthTexture ? depthTexture->depthFormat : VK_FORMAT_UNDEFINED; }
-        VkImageView GetDepthImageView() const { return depthTexture ? depthTexture->depthImageView : VK_NULL_HANDLE; }
-
-        VkImageViewType GetDepthViewType() const {
-            return isShadowArray ? VK_IMAGE_VIEW_TYPE_2D_ARRAY : VK_IMAGE_VIEW_TYPE_2D;
         }
 
         // --- View Collection ---
@@ -178,6 +172,19 @@ namespace Simple3D {
             barrier.image = image;
             barrier.subresourceRange = { aspect, 0, 1, 0, layers };
             vkCmdPipelineBarrier(cmd, srcStage, dstStage, 0, 0, nullptr, 0, nullptr, 1, &barrier);
+        }
+
+
+        DepthBuffer* GetDepthBuffer() const {
+            return depthSource ? depthSource->depthTexture : depthTexture;
+        }
+        VkFormat GetDepthFormat() const {
+            auto* d = GetDepthBuffer();
+            return d ? d->depthFormat : VK_FORMAT_UNDEFINED;
+        }
+        VkImageView GetDepthImageView() const {
+            auto* d = GetDepthBuffer();
+            return d ? d->depthImageView : VK_NULL_HANDLE;
         }
     };
 }

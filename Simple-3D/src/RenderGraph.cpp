@@ -91,19 +91,13 @@ namespace Simple3D {
             std::vector<VkImageView> attachments = target.GetAttachmentViews(i);
 
             // --- Depth Resizing Logic ---
-            if (target.HasDepth()) {
+            if (target.HasDepth() && !target.depthSource) {
                 if (target.depthTexture->extent.width != extent.width ||
-                    target.depthTexture->extent.height != extent.height)
-                {
-                    if (target.depthTexture)
-                        delete target.depthTexture;
-
-                    // Note: Ensure your DepthBuffer constructor and commandPool access are correct for your scope
+                    target.depthTexture->extent.height != extent.height) {
+                    delete target.depthTexture;
                     target.depthTexture = new DepthBuffer(&device, extent, &commandPool);
-
-                    // Re-fetch views since the depth image view just changed
-                    attachments = target.GetAttachmentViews(i);
                 }
+                attachments = target.GetAttachmentViews(i);
             }
 
             VkFramebufferCreateInfo fbInfo{};
@@ -222,11 +216,13 @@ namespace Simple3D {
             VkImageLayout depthInitialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
             VkAttachmentLoadOp depthLoadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
 
-            if (isOverlay) {
-                // TransitionForWrite() already moved this image from
-                // READ_ONLY_OPTIMAL -> ATTACHMENT_OPTIMAL before the render pass
-                // begins. The render pass's own initialLayout has to match that
-                // real layout, or LOAD is allowed to discard the existing depth.
+            if (target.depthSource) {
+                // Borrowed: already written by its owner, left in READ_ONLY_OPTIMAL.
+                // We only test, never clear/write it.
+                depthLoadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+                depthInitialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+            }
+            else if (isOverlay) {
                 depthLoadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
                 depthInitialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
             }
