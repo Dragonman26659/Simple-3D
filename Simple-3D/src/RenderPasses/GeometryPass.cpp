@@ -11,7 +11,7 @@ namespace Simple3D {
 
     void ForwardPass::SetUpPass() {
         // --- Configure the pipeline for a forward (geometry) pass ---
-        uint32_t colorAttachmentCount = renderInfo.target.GetColorAttachmentCount();
+        uint32_t colorAttachmentCount = renderInfo.target->GetColorAttachmentCount();
         PassConfig = PipelineConfig::MakeDefaultForAttachments(colorAttachmentCount);
 
         // Vertex input enabled (geometry)
@@ -46,20 +46,20 @@ namespace Simple3D {
         PassConfig.dynamicStates = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
 
         // Subpass (0 for single-pass)
-        PassConfig.depthTestEnable = renderInfo.target.HasDepth();
-        PassConfig.depthWriteEnable = renderInfo.target.HasDepth();
+        PassConfig.depthTestEnable = renderInfo.target->HasDepth();
+        PassConfig.depthWriteEnable = renderInfo.target->HasDepth();
         PassConfig.subpass = 0;
     }
 
     void ForwardPass::Execute(VkCommandBuffer cmd, const RenderData& data, uint32_t imageIndex, uint32_t syncIndex) {
-        if (!renderInfo.target.IsValid()) {
+        if (!renderInfo.target->IsValid()) {
             throw std::runtime_error("Invalid render target in GeometryPass!");
         }
 
-        renderInfo.target.TransitionForWrite(cmd, imageIndex);
+        renderInfo.target->TransitionForWrite(cmd, imageIndex);
 
-        RenderTarget& target = renderInfo.target;
-        const VkExtent2D extent = target.GetExtent();
+        RenderTarget* target = renderInfo.target;
+        const VkExtent2D extent = target->GetExtent();
 
         // --- 1. Clear values
         std::vector<VkClearValue> clearValues;
@@ -67,12 +67,12 @@ namespace Simple3D {
         colorClear.color = { {0.0f, 0.0f, 0.0f, 1.0f} };
         clearValues.push_back(colorClear);
 
-        if (target.HasDepth()) {
+        if (target->HasDepth()) {
             // ensure depth buffer matches extent
-            if (target.depthTexture->extent.width != extent.width ||
-                target.depthTexture->extent.height != extent.height) {
-                delete target.depthTexture;
-                target.depthTexture = new DepthBuffer(device, extent, commandPool);
+            if (target->depthTexture->extent.width != extent.width ||
+                target->depthTexture->extent.height != extent.height) {
+                delete target->depthTexture;
+                target->depthTexture = new DepthBuffer(device, extent, commandPool);
             }
 
             VkClearValue depthClear{};
@@ -81,8 +81,8 @@ namespace Simple3D {
         }
 
         // --- 2. Transition target texture for write
-        if (target.IsTexture()) {
-            target.TransitionForWrite(cmd, 0);
+        if (target->IsTexture()) {
+            target->TransitionForWrite(cmd, 0);
         }
 
         // --- 3. Begin render pass
@@ -170,8 +170,8 @@ namespace Simple3D {
         vkCmdEndRenderPass(cmd);
 
         // --- 8. Transition for sampling
-        if (target.IsTexture()) {
-            target.TransitionForRead(cmd, imageIndex);
+        if (target->IsTexture()) {
+            target->TransitionForRead(cmd, imageIndex);
 		}
     }
 }

@@ -45,6 +45,13 @@ namespace Simple3D {
 
 	TextureBinding CreateTextureBinding(std::string filepath, Device* r_device, VkCommandPool* r_commandPool);
 
+	TextureBinding CreateTextureBinding(
+		const void* data,
+		size_t dataSize,
+		Device* r_device,
+		VkCommandPool* r_commandPool
+	);
+
 	static VkDeviceSize getAlignedSize(VkDeviceSize original, VkDeviceSize alignment) {
 		if (alignment == 0) return original;
 		return (original + alignment - 1) & ~(alignment - 1);

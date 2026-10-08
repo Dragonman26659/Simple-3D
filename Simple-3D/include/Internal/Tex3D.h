@@ -12,6 +12,10 @@ namespace Simple3D {
             const std::vector<std::string>& facePaths,
             bool generateMipmapsEnabled, VkCommandPool* CommandPool);
 
+        TextureCube(Device& dev, uint32_t faceSize,
+            const std::array<std::vector<float>, 6>& faceData,
+            bool generateMipmapsEnabled, VkCommandPool* CommandPool);
+
         ~TextureCube();
 
         // For binding to the pipeline
@@ -43,6 +47,7 @@ namespace Simple3D {
         void CreateImageViewCube(VkFormat format);
         void CreateSampler();
         void UploadToGPU(std::vector<unsigned char*>& pixelData, VkFormat format);
+        void UploadToGPUFloat(const std::array<std::vector<float>, 6>& faceData, VkFormat format);
         void GenerateMipmaps(VkFormat format);
     };
 }

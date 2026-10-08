@@ -77,27 +77,27 @@ namespace Simple3D {
 
     std::vector<VkFramebuffer> RenderGraph::CreateFramebufferForTarget(
         Device& device,
-        RenderTarget& target,
+        RenderTarget* target,
         VkRenderPass renderPass)
     {
         std::vector<VkFramebuffer> framebuffers;
-        VkExtent2D extent = target.GetExtent();
-        uint32_t imageCount = target.IsSwapchain() ? static_cast<uint32_t>(target.swapchain->getImageViews().size()) : 1;
+        VkExtent2D extent = target->GetExtent();
+        uint32_t imageCount = target->IsSwapchain() ? static_cast<uint32_t>(target->swapchain->getImageViews().size()) : 1;
 
         framebuffers.reserve(imageCount);
 
         for (uint32_t i = 0; i < imageCount; i++) {
             // Automatically gets all color attachments (N textures) and depth if it exists
-            std::vector<VkImageView> attachments = target.GetAttachmentViews(i);
+            std::vector<VkImageView> attachments = target->GetAttachmentViews(i);
 
             // --- Depth Resizing Logic ---
-            if (target.HasDepth() && !target.depthSource) {
-                if (target.depthTexture->extent.width != extent.width ||
-                    target.depthTexture->extent.height != extent.height) {
-                    delete target.depthTexture;
-                    target.depthTexture = new DepthBuffer(&device, extent, &commandPool);
+            if (target->HasDepth() && !target->depthSource) {
+                if (target->depthTexture->extent.width != extent.width ||
+                    target->depthTexture->extent.height != extent.height) {
+                    delete target->depthTexture;
+                    target->depthTexture = new DepthBuffer(&device, extent, &commandPool);
                 }
-                attachments = target.GetAttachmentViews(i);
+                attachments = target->GetAttachmentViews(i);
             }
 
             VkFramebufferCreateInfo fbInfo{};
@@ -133,7 +133,7 @@ namespace Simple3D {
             pass.commandPool = &commandPool;
 
             if (!pass.outputResources.empty()) {
-                pass.renderInfo.target = *resources[pass.outputResources[0]].target;
+                pass.renderInfo.target = resources[pass.outputResources[0]].target;
             }
 
             for (auto& inputName : pass.inputResources)
@@ -152,7 +152,7 @@ namespace Simple3D {
             pass.GenerateRenderPass();
             pass.CreatePipelines(shaders);
 
-            if (!info.target.IsValid())
+            if (!info.target->IsValid())
                 continue;
 
             // Create framebuffer for this target
@@ -167,7 +167,7 @@ namespace Simple3D {
             auto& pass = *passPtr;
             RenderInfo& info = pass.renderInfo;
 
-            if (info.target.swapchain) {
+            if (info.target->swapchain) {
                 // Create framebuffer for this target
                 info.framebuffers = CreateFramebufferForTarget(device, info.target, passPtr->renderPass);
                 info.framebuffer = info.framebuffers[0];
@@ -177,13 +177,13 @@ namespace Simple3D {
 
     void RenderPass::GenerateRenderPass() {
         const auto& target = renderInfo.target;
-        if (!target.IsValid())
+        if (!target->IsValid())
             throw std::runtime_error("RenderPass::GenerateRenderPass() -> Invalid RenderTarget!");
 
         SetUpPass();
 
-        bool hasDepth = target.HasDepth();
-        uint32_t colorCount = target.GetColorAttachmentCount();
+        bool hasDepth = target->HasDepth();
+        uint32_t colorCount = target->GetColorAttachmentCount();
 
         std::vector<VkAttachmentDescription> attachments;
         std::vector<VkAttachmentReference> colorRefs;
@@ -191,11 +191,11 @@ namespace Simple3D {
         // --- 1. Build Color Attachments ---
         for (uint32_t i = 0; i < colorCount; ++i) {
             // Determine the final layout: swapchain needs PRESENT, G-Buffers need SHADER_READ
-            VkImageLayout finalLayout = target.IsSwapchain()
+            VkImageLayout finalLayout = target->IsSwapchain()
                 ? VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
                 : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
-            VkAttachmentDescription desc = target.GetColorAttachmentDescription(i, finalLayout);
+            VkAttachmentDescription desc = target->GetColorAttachmentDescription(i, finalLayout);
 
             if (isOverlay) {
                 desc.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
@@ -216,7 +216,7 @@ namespace Simple3D {
             VkImageLayout depthInitialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
             VkAttachmentLoadOp depthLoadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
 
-            if (target.depthSource) {
+            if (target->depthSource) {
                 // Borrowed: already written by its owner, left in READ_ONLY_OPTIMAL.
                 // We only test, never clear/write it.
                 depthLoadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
@@ -227,7 +227,7 @@ namespace Simple3D {
                 depthInitialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
             }
 
-            attachments.push_back(target.GetDepthAttachmentDescription(
+            attachments.push_back(target->GetDepthAttachmentDescription(
                 depthInitialLayout,
                 VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
                 depthLoadOp));
@@ -280,7 +280,7 @@ namespace Simple3D {
         if (renderPass == VK_NULL_HANDLE) return;
 
         for (ShaderSet* shaderset : shaders) {
-            renderInfo.Pipelines[shaderset] = new Pipeline(*device, *shaderset, renderPass, renderInfo.target, PassConfig);
+            renderInfo.Pipelines[shaderset] = new Pipeline(*device, *shaderset, renderPass, *renderInfo.target, PassConfig);
         }
     }
 }

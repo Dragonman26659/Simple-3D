@@ -401,54 +401,199 @@ namespace Simple3D {
         }
     }
 
-    TextureBinding CreateTextureBinding(std::string filepath, Device* r_device, VkCommandPool* r_commandPool) {
-        TextureBinding binding = {};
+    TextureBinding CreateTextureBinding(
+        const void* data,
+        size_t dataSize,
+        Device* r_device,
+        VkCommandPool* r_commandPool)
+    {
+        if (!data || dataSize == 0)
+            throw std::runtime_error("Invalid texture data");
 
+        int texWidth;
+        int texHeight;
+        int texChannels;
 
-        // Load image into GPU memory
-        int texWidth, texHeight, texChannels;
-        stbi_uc* pixels = stbi_load(filepath.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
-        VkDeviceSize imageSize = texWidth * texHeight * 4;
+        stbi_uc* pixels = stbi_load_from_memory(
+            static_cast<const stbi_uc*>(data),
+            static_cast<int>(dataSize),
+            &texWidth,
+            &texHeight,
+            &texChannels,
+            STBI_rgb_alpha
+        );
 
+        if (!pixels)
+        {
+            throw std::runtime_error(
+                std::string("Failed to decode texture: ") +
+                stbi_failure_reason()
+            );
+        }
+
+        VkDeviceSize imageSize =
+            static_cast<VkDeviceSize>(texWidth) *
+            static_cast<VkDeviceSize>(texHeight) *
+            4;
+
+        TextureBinding binding{};
         binding.width = texWidth;
         binding.height = texHeight;
 
-        if (!pixels) {
-            throw std::runtime_error("failed to load texture image!");
+        VkBuffer stagingBuffer = VK_NULL_HANDLE;
+        VkDeviceMemory stagingBufferMemory = VK_NULL_HANDLE;
+
+        createBuffer(
+            imageSize,
+            VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+            VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+            stagingBuffer,
+            stagingBufferMemory,
+            r_device
+        );
+
+        void* mappedData = nullptr;
+
+        VkResult result = vkMapMemory(
+            r_device->getLogicalDevice(),
+            stagingBufferMemory,
+            0,
+            imageSize,
+            0,
+            &mappedData
+        );
+
+        if (result != VK_SUCCESS)
+        {
+            stbi_image_free(pixels);
+
+            vkDestroyBuffer(
+                r_device->getLogicalDevice(),
+                stagingBuffer,
+                nullptr
+            );
+
+            vkFreeMemory(
+                r_device->getLogicalDevice(),
+                stagingBufferMemory,
+                nullptr
+            );
+
+            throw std::runtime_error("Failed to map texture staging memory");
         }
 
-        VkBuffer stagingBuffer;
-        VkDeviceMemory stagingBufferMemory;
+        memcpy(mappedData, pixels, static_cast<size_t>(imageSize));
 
-        createBuffer(imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer, stagingBufferMemory, r_device);
-
-        void* data;
-        vkMapMemory(r_device->getLogicalDevice(), stagingBufferMemory, 0, imageSize, 0, &data);
-        memcpy(data, pixels, static_cast<size_t>(imageSize));
-        vkUnmapMemory(r_device->getLogicalDevice(), stagingBufferMemory);
+        vkUnmapMemory(
+            r_device->getLogicalDevice(),
+            stagingBufferMemory
+        );
 
         stbi_image_free(pixels);
 
-        createImage(texWidth, texHeight, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, binding.textureImage, binding.textureImageMemory, r_device, 1);
+        // Create Vulkan image
+        createImage(
+            texWidth,
+            texHeight,
+            VK_FORMAT_R8G8B8A8_SRGB,
+            VK_IMAGE_TILING_OPTIMAL,
+            VK_IMAGE_USAGE_TRANSFER_DST_BIT |
+            VK_IMAGE_USAGE_SAMPLED_BIT,
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+            binding.textureImage,
+            binding.textureImageMemory,
+            r_device
+        );
 
-        transitionImageLayout(binding.textureImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, r_device, r_commandPool, 1);
-        copyBufferToImage(stagingBuffer, binding.textureImage, static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight), r_device, r_commandPool);
+        // Transfer image into transfer destination layout
+        transitionImageLayout(
+            binding.textureImage,
+            VK_FORMAT_R8G8B8A8_SRGB,
+            VK_IMAGE_LAYOUT_UNDEFINED,
+            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            r_device,
+            r_commandPool,
+            1
+        );
 
-        transitionImageLayout(binding.textureImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, r_device, r_commandPool, 1);
+        copyBufferToImage(
+            stagingBuffer,
+            binding.textureImage,
+            static_cast<uint32_t>(texWidth),
+            static_cast<uint32_t>(texHeight),
+            r_device,
+            r_commandPool
+        );
 
-        //transitionImageLayout(binding.textureImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, r_device, r_commandPool);
+        // Make texture readable by shaders
+        transitionImageLayout(
+            binding.textureImage,
+            VK_FORMAT_R8G8B8A8_SRGB,
+            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+            r_device,
+            r_commandPool,
+            1
+        );
 
-        vkDestroyBuffer(r_device->getLogicalDevice(), stagingBuffer, nullptr);
-        vkFreeMemory(r_device->getLogicalDevice(), stagingBufferMemory, nullptr);
+        // Staging resources no longer needed
+        vkDestroyBuffer(
+            r_device->getLogicalDevice(),
+            stagingBuffer,
+            nullptr
+        );
 
+        vkFreeMemory(
+            r_device->getLogicalDevice(),
+            stagingBufferMemory,
+            nullptr
+        );
 
-        // Create image view and sampler
-        binding.view = createImageView(binding.textureImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT, r_device);
+        // Image view
+        binding.view = createImageView(
+            binding.textureImage,
+            VK_FORMAT_R8G8B8A8_SRGB,
+            VK_IMAGE_ASPECT_COLOR_BIT,
+            r_device
+        );
+
+        // Sampler
         createTextureSampler(&binding, r_device);
 
-
-
         return binding;
+    }
+
+    TextureBinding CreateTextureBinding(
+        std::string filepath,
+        Device* r_device,
+        VkCommandPool* r_commandPool)
+    {
+        std::ifstream file(filepath, std::ios::binary | std::ios::ate);
+
+        if (!file)
+            throw std::runtime_error("Failed to open texture: " + filepath);
+
+        std::streamsize size = file.tellg();
+        file.seekg(0, std::ios::beg);
+
+        std::vector<uint8_t> data(static_cast<size_t>(size));
+
+        if (!file.read(
+            reinterpret_cast<char*>(data.data()),
+            size))
+        {
+            throw std::runtime_error(
+                "Failed to read texture: " + filepath
+            );
+        }
+
+        return CreateTextureBinding(
+            data.data(),
+            data.size(),
+            r_device,
+            r_commandPool
+        );
     }
 
 

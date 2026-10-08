@@ -7,12 +7,12 @@
 #include "Internal/Material/ShaderSet.h"
 
 namespace Simple3D {
-	// Target of a renderpass
+    // Target of a renderpass
     struct RenderTarget {
         SwapChain* swapchain = nullptr;
         std::vector<RenderTexture*> colorAttachments;
         DepthBuffer* depthTexture = nullptr;
-        RenderTarget* depthSource = nullptr; // Lets a rendertarget borrow another targets depth texture
+        RenderTarget* depthSource = nullptr;
 
         // Shadowmapping Support
         bool isShadowArray = false;
@@ -120,23 +120,42 @@ namespace Simple3D {
             return desc;
         }
 
-        // --- Transitions ---
         void TransitionForRead(VkCommandBuffer cmd, uint32_t frameIndex) const {
             // Color Transitions
             uint32_t count = GetColorAttachmentCount();
             for (uint32_t i = 0; i < count; ++i) {
-                VkImage img = IsSwapchain() ? swapchain->getImages()[frameIndex] : colorAttachments[i]->GetImage();
-                TransitionImage(cmd, img, VK_IMAGE_ASPECT_COLOR_BIT,
-                    VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                    VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
-                    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 1);
+                if (IsSwapchain()) {
+                    VkImage img = swapchain->getImages()[frameIndex];
+                    TransitionImage(cmd, img, VK_IMAGE_ASPECT_COLOR_BIT,
+                        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                        VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+                        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 1);
+                }
+                else {
+                    RenderTexture* tex = colorAttachments[i];
+                    const VkImageLayout oldLayout = tex->currentState.layout;
+                    const VkImageLayout newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                    if (oldLayout == newLayout) continue; // already in the right layout, nothing to do
+
+                    TransitionImage(cmd, tex->GetImage(), VK_IMAGE_ASPECT_COLOR_BIT,
+                        oldLayout, newLayout,
+                        VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+                        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 1);
+                    tex->currentState.layout = newLayout;
+                }
             }
             // Depth/Shadow Transition
             if (HasDepth()) {
-                TransitionImage(cmd, depthTexture->depthImage, VK_IMAGE_ASPECT_DEPTH_BIT,
-                    VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
-                    VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
-                    VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, layerCount);
+                DepthBuffer* depth = GetDepthBuffer();
+                const VkImageLayout oldLayout = depth->currentLayout;
+                const VkImageLayout newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+                if (oldLayout != newLayout) {
+                    TransitionImage(cmd, depth->depthImage, VK_IMAGE_ASPECT_DEPTH_BIT,
+                        oldLayout, newLayout,
+                        VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+                        VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, layerCount);
+                    depth->currentLayout = newLayout;
+                }
             }
         }
 
@@ -144,18 +163,38 @@ namespace Simple3D {
             // Color Transitions
             uint32_t count = GetColorAttachmentCount();
             for (uint32_t i = 0; i < count; ++i) {
-                VkImage img = IsSwapchain() ? swapchain->getImages()[frameIndex] : colorAttachments[i]->GetImage();
-                TransitionImage(cmd, img, VK_IMAGE_ASPECT_COLOR_BIT,
-                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                    VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-                    VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 1);
+                if (IsSwapchain()) {
+                    VkImage img = swapchain->getImages()[frameIndex];
+                    TransitionImage(cmd, img, VK_IMAGE_ASPECT_COLOR_BIT,
+                        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                        VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+                        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 1);
+                }
+                else {
+                    RenderTexture* tex = colorAttachments[i];
+                    const VkImageLayout oldLayout = tex->currentState.layout;
+                    const VkImageLayout newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+                    if (oldLayout == newLayout) continue;
+
+                    TransitionImage(cmd, tex->GetImage(), VK_IMAGE_ASPECT_COLOR_BIT,
+                        oldLayout, newLayout,
+                        VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+                        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 1);
+                    tex->currentState.layout = newLayout;
+                }
             }
             // Depth/Shadow Transition
             if (HasDepth()) {
-                TransitionImage(cmd, depthTexture->depthImage, VK_IMAGE_ASPECT_DEPTH_BIT,
-                    VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-                    VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
-                    VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT, layerCount);
+                DepthBuffer* depth = GetDepthBuffer();
+                const VkImageLayout oldLayout = depth->currentLayout;
+                const VkImageLayout newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+                if (oldLayout != newLayout) {
+                    TransitionImage(cmd, depth->depthImage, VK_IMAGE_ASPECT_DEPTH_BIT,
+                        oldLayout, newLayout,
+                        VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+                        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT, layerCount);
+                    depth->currentLayout = newLayout;
+                }
             }
         }
 
@@ -176,7 +215,8 @@ namespace Simple3D {
 
 
         DepthBuffer* GetDepthBuffer() const {
-            return depthSource ? depthSource->depthTexture : depthTexture;
+            if (depthSource) return depthSource->depthTexture;
+            return depthTexture;
         }
         VkFormat GetDepthFormat() const {
             auto* d = GetDepthBuffer();

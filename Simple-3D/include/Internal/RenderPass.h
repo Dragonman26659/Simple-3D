@@ -38,14 +38,14 @@ namespace Simple3D {
 
 		RenderTexture* inputTexture = nullptr;
 
-		RenderTarget target;
+		RenderTarget* target = nullptr;
 
 		VkFramebuffer framebuffer = VK_NULL_HANDLE;
 		std::vector<VkFramebuffer> framebuffers;
 
 
 		VkFramebuffer GetFrameBuffer(uint32_t imageIndex) {
-			if (target.swapchain) {
+			if (target->swapchain) {
 				return framebuffers[imageIndex];
 			}
 			return framebuffer;
